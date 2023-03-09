@@ -1,6 +1,6 @@
 #pragma once
-#ifndef SRC_COCLASSES_ITERATOR_H_
-#define SRC_COCLASSES_ITERATOR_H_
+#ifndef SRC_cocls_ITERATOR_H_
+#define SRC_cocls_ITERATOR_H_
 #include <iterator>
 
 
@@ -75,4 +75,4 @@ protected:
 
 
 
-#endif /* SRC_COCLASSES_ITERATOR_H_ */
+#endif /* SRC_cocls_ITERATOR_H_ */

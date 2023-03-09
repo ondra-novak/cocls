@@ -3,8 +3,8 @@
  *
  * scheduler
  */
-#ifndef SRC_COCLASSES_SCHEDULER_H_
-#define SRC_COCLASSES_SCHEDULER_H_
+#ifndef SRC_cocls_SCHEDULER_H_
+#define SRC_cocls_SCHEDULER_H_
 #include "future.h"
 
 #include "exceptions.h"
@@ -243,7 +243,9 @@ public:
             std::exception_ptr e;
             std::stop_source stps;
             using AwtRetVal = std::decay_t<awaiter_return_value<Awt> >;
-            auto worker = worker_coro(stps.get_token());
+            auto worker = worker_coro<false>(stps.get_token());
+            stack_storage storage(_elide_state);
+            storage = alloca(storage);
 
             if constexpr(std::is_void_v<AwtRetVal>) {
 
@@ -254,7 +256,7 @@ public:
                     stps.request_stop();
                 };
 
-                auto wt = callback_await<Awt &>(awt, fn);
+                callback_await<stack_storage,Awt &>(storage, fn, awt);
 
                 coro_queue::install_queue_and_call([&]{
                     worker.detach();
@@ -263,7 +265,7 @@ public:
             } else {
                 std::optional<AwtRetVal> ret;
 
-                auto wt = callback_await<Awt &>(awt, [&](auto x){
+                callback_await<stack_storage,Awt &>(storage, awt, [&](auto x){
                     if constexpr(std::is_same_v<decltype(x), std::exception_ptr>) {
                         e = std::exception_ptr(x);
                     } else {
@@ -355,6 +357,7 @@ protected:
     std::mutex _mx;
     std::condition_variable _cond;
     std::optional<GlobState> _glob_state;
+    std::size_t _elide_state = 0;
 
 
     static bool compare_item(const SchItem &a, const SchItem &b) {
@@ -366,16 +369,24 @@ protected:
         _scheduled.pop_back();
     }
 
+    template<bool have_pool>
     async<void> worker_coro(std::stop_token state) {
         std::stop_callback stop_notify(state, [&]{
             _cond.notify_all();
         });
         std::unique_lock lk(_mx);
         std::chrono::system_clock::time_point now;
-        thread_pool *pool = _glob_state.has_value()?_glob_state->_pool:nullptr;
+        thread_pool *pool ;
+        if constexpr(have_pool) {
+            pool = _glob_state.has_value()?_glob_state->_pool:nullptr;
+        }
         while (!state.stop_requested()) {
             lk.unlock();
-            co_await pause();
+            if constexpr(have_pool) {
+                co_await *pool;
+            } else {
+                co_await pause();
+            }
             lk.lock();
             if (state.stop_requested()) break;
             now = std::chrono::system_clock::now();
@@ -383,10 +394,20 @@ protected:
             std::visit([&](auto &x){
                using T = std::decay_t<decltype(x)>;
                if constexpr(std::is_same_v<T, promise>) {
-                   if (pool) pool->resolve(x); else x(); //resolve if pool defined, use pool
+                   if constexpr(have_pool) {
+                       pool->resolve(x);
+                   } else {
+                       x();
+                   }
                } else {
-                   if (coro_queue::can_block() && (!pool || pool->any_enqueued())) {
-                       _cond.wait_until(lk, x);
+                   if constexpr(have_pool) {
+                       if (!pool->any_enqueued() && !coro_queue::can_block()) {
+                           _cond.wait_until(lk, x);
+                       }
+                   } else {
+                       if (!coro_queue::can_block()) {
+                           _cond.wait_until(lk, x);
+                       }
                    }
                }
             }, p);
@@ -411,7 +432,7 @@ protected:
         _glob_state.emplace();
         _glob_state->_pool = &pool;
         _glob_state->_fut << [&]{
-            return pool.run(worker_coro(_glob_state->_stp.get_token()));
+            return pool.run(worker_coro<true>(_glob_state->_stp.get_token()));
         };
     }
 
@@ -421,7 +442,7 @@ protected:
         _glob_state.emplace();
         auto promise = _glob_state->_fut.get_promise();
         thr = std::thread([this,promise = std::move(promise)]() mutable {
-            worker_coro(_glob_state->_stp.get_token()).start_set_promise(promise);
+            worker_coro<false>(_glob_state->_stp.get_token()).start(promise);
         });
     }
 };
@@ -434,4 +455,4 @@ protected:
 
 
 
-#endif /* SRC_COCLASSES_SCHEDULER_H_ */
+#endif /* SRC_cocls_SCHEDULER_H_ */

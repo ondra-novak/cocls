@@ -5,8 +5,8 @@
  *      Author: ondra
  */
 #pragma once
-#ifndef SRC_COCLASSES_THREAD_POOL_H_
-#define SRC_COCLASSES_THREAD_POOL_H_
+#ifndef SRC_cocls_THREAD_POOL_H_
+#define SRC_cocls_THREAD_POOL_H_
 #include "common.h"
 #include "future.h"
 #include "exceptions.h"
@@ -15,6 +15,7 @@
 
 #include <condition_variable>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <queue>
@@ -119,13 +120,12 @@ public:
 
             //this lambda function is called when enqueued function is destroyed
             auto fin = [](co_awaiter *x) {
-                //if there is still handle (because normal resume sets it to nullptr)
-                //the function was not called, so we are canceled operation
-                if (x->_h)
-                    //resume coroutine (in queue if possible)
-                    //we will throw exception when await_resume()
-                    coro_queue::resume(x->_h);
+                //resume coroutine (in queue if possible)
+                //we will throw exception when await_resume()
+                coro_queue::resume(x->_h);
             };
+
+            this->_h = h;
 
             //enqueue function
             //awtptr contains pointer to our awaiter
@@ -135,6 +135,8 @@ public:
                auto h = awtptr->_h;
                //reset our handle - so the deleter will see that we successed
                awtptr->_h = nullptr;
+               //release pointer, as we don't need to call the deleter
+               awtptr.release();
 
                coro_queue::resume(h);
            });
@@ -229,7 +231,7 @@ public:
     future<T> run(async<T> &&coro) {
         return [&](auto promise) {
             enqueue([promise = std::move(promise), coro = std::move(coro)]()mutable{
-                coro.start_set_promise(promise);
+                coro.start(promise);
             });
         };
     }
@@ -241,7 +243,7 @@ public:
      */
     template<typename T>
     void run_detached(async<T> &&coro) {
-        enqueue([coro = std::move(coro)](){
+        enqueue([coro = std::move(coro)]() mutable {
            coro.detach();
         });
     }
@@ -322,9 +324,10 @@ protected:
 
 };
 
+ inline thread_local thread_pool *thread_pool::_current;
 
 }
 
 
 
-#endif /* SRC_COCLASSES_THREAD_POOL_H_ */
+#endif /* SRC_cocls_THREAD_POOL_H_ */

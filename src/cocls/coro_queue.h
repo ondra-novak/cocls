@@ -4,6 +4,8 @@
 
 
 #include "common.h"
+
+#include <cassert>
 #include <queue>
 #include <utility>
 
@@ -123,6 +125,7 @@ struct coro_queue {
     static void resume(std::coroutine_handle<> h) noexcept {
 
         if (instance) {
+            assert("Attempt to resume empty handle " && h);
             instance->_queue.push(h);
         } else {
             install_queue_and_resume(h);

@@ -7,10 +7,8 @@
  */
 
 #pragma once
-#ifndef SRC_COCLASSES_CORO_STORAGE_H_
-#define SRC_COCLASSES_CORO_STORAGE_H_
-
-#include "task.h"
+#ifndef SRC_cocls_CORO_STORAGE_H_
+#define SRC_cocls_CORO_STORAGE_H_
 
 #include <vector>
 #include <cassert>
@@ -21,26 +19,6 @@
 #include <utility>
 namespace cocls {
 
-
-///Defines multiplier for all statically allocated storages for coroutines
-/**
- * In current C++ version (C++20) it is very difficult to determine space needed to
- * coroutine frame. The value must be determined by guessing, trial and error. The
- * final value can be valid for some compilers. For other compilers, the value can
- * be insufficient which results to assert (in debug) or not using static storage at all.
- * If this happen, you can redefine COCLS_STATIC_STORAGE_MULTIPLIER and specify how much this
- * number must be increased globally. The value is in percent, so setting 150 means, that all
- * sizes are multiplied by 1.5 times.
- *
- * This constant can be passed at command line as -DCOCLS_STATIC_STORAGE_MULTIPLIER=150
- */
-#ifndef COCLS_STATIC_STORAGE_MULTIPLIER
-#ifdef _WIN32
-#define COCLS_STATIC_STORAGE_MULTIPLIER 250
-#else
-#define COCLS_STATIC_STORAGE_MULTIPLIER 100
-#endif
-#endif
 
 
 
@@ -229,18 +207,6 @@ protected:
     Buffer &_buff;
 };
 
-/// default storage equivalent to declare coroutine without allocator
-/** Can be used where Allocator teplate is enforced and we need to fallback to default allocator */
-class default_storage {
-public:
-    static void *alloc(std::size_t sz) {
-        return ::operator new(sz);
-    }
-    static void dealloc(void *ptr, std::size_t sz) {
-        return ::operator delete(ptr);
-    }
-};
-
 ///Allocator which allocates extra space for extra object which lives inside of coroutine frame
 /**
  * This object need to be default constructible
@@ -275,20 +241,8 @@ public:
     T &operator *() {return *inventory;}
 };
 
-class alloca_storage {
-public:
-
-    void *alloc(std::size_t sz) {
-        if (ptr && )
-    }
-
-protected:
-    void *ptr = nullptr;
-    std::size_t sz = 0;
-};
-
 
 
 }
 
-#endif /* SRC_COCLASSES_CORO_STORAGE_H_ */
+#endif /* SRC_cocls_CORO_STORAGE_H_ */

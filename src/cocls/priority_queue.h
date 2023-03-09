@@ -1,5 +1,5 @@
-#ifndef SRC_COCLASSES_PRIORITY_QUEUE
-#define SRC_COCLASSES_PRIORITY_QUEUE
+#ifndef SRC_cocls_PRIORITY_QUEUE
+#define SRC_cocls_PRIORITY_QUEUE
 
 #include <queue>
 #include "trailer.h"

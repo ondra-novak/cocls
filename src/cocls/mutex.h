@@ -3,8 +3,8 @@
  *
  */
 #pragma once
-#ifndef SRC_COCLASSES_MUTEX_H_
-#define SRC_COCLASSES_MUTEX_H_
+#ifndef SRC_cocls_MUTEX_H_
+#define SRC_cocls_MUTEX_H_
 
 #include "awaiter.h"
 #include "common.h"
@@ -54,7 +54,7 @@ protected:
 public:
 
 
-    using awaiter = co_awaiter<mutex>;
+
 
     ///construct a mutex
     /**
@@ -74,7 +74,7 @@ public:
     class ownership {
     public:
         ownership() = default;
-        ownership(awaiter &&awt):ownership(awt.wait()) {}
+        ownership(co_awaiter<mutex> &&awt):ownership(awt.wait()) {}
         ownership(const ownership &) = delete;
         ownership &operator=(const ownership &) = delete;
         ownership(ownership &&) = default;
@@ -110,7 +110,7 @@ public:
      * @note function must be called with co_await. You can also use wait()
      * to obtain ownership outside of coroutine
      */
-    awaiter lock() {return *this;}
+    co_awaiter<mutex> lock() {return *this;}
 
 
 
@@ -120,7 +120,7 @@ public:
      * whether it holds ownership
      */
     ownership try_lock() {
-        return is_ready()?ownership(this):ownership(nullptr);
+        return ready()?ownership(this):ownership(nullptr);
     }
 
 
@@ -131,18 +131,18 @@ protected:
 
     //requests to lock
     /*this is linked list in stack order LIFO, with atomic append feature */
-    std::atomic<abstract_awaiter *> _requests = nullptr;
+    std::atomic<awaiter *> _requests = nullptr;
     //queue of requests, contains awaiters ordered in order of incoming
     /*this is also LIFO, but reversed - because reading LIFO to LIFO results FIFO
      * The queue is accessed under lock. It is build by unlocking thread
      * if the queue is empty by reversing _request. This is handled atomically
      */
-    abstract_awaiter *_queue = nullptr;
+    awaiter *_queue = nullptr;
 
     //when queue is build, we need object, which acts as doorman
     /*presence of doorman marks object locked. By removing doorman, object becomes unlocked */
-    static constexpr abstract_awaiter *doorman() {
-        return &empty_awaiter::instance;
+    static constexpr awaiter *doorman() {
+        return &awaiter::instance;
     }
 
     void unlock() {
@@ -165,7 +165,7 @@ protected:
         }
         //pick first item from the queue
         //queue is access under lock, no atomics are needed
-        abstract_awaiter *first = _queue;
+        awaiter *first = _queue;
         //remove item from the queue
         _queue = _queue->_next;
         //clear _next ptr to avoid leaking invalid pointer to next code
@@ -176,16 +176,16 @@ protected:
     }
 
     //is_ready is essentially try_lock function
-    bool is_ready() {
+    bool ready() {
         //we expect nullptr in _requests, try to put doorman there
-        abstract_awaiter *n = nullptr;
+        awaiter *n = nullptr;
         bool ok = _requests.compare_exchange_strong(n, doorman());
         //if ok = true, object is guarder by doorman
         return ok;
     }
 
     //when try_lock fails, we need to register itself to waiting queue (_requests)
-    bool subscribe_awaiter(abstract_awaiter *aw) {
+    bool subscribe_awaiter(awaiter *aw) {
         //so subscribe to _requests
         aw->subscribe(_requests);
         //now check result of _next, which gives as hint, how lock operation ended
@@ -205,11 +205,11 @@ protected:
         }
     }
 
-    void build_queue(abstract_awaiter *stop) {
+    void build_queue(awaiter *stop) {
         assert("Can't build queue if there are items in it" && _queue == nullptr);
         //atomically swap top of _requests with doorman
         //we use acquire order - to see changes on _next
-        abstract_awaiter *req = _requests.exchange(doorman(), std::memory_order_acquire);
+        awaiter *req = _requests.exchange(doorman(), std::memory_order_acquire);
         //if req is defined and until stop is reached
         while (req  && req != stop) {
             //pick top item, remove it and push it to _queue
@@ -221,7 +221,7 @@ protected:
         //queue is updated
     }
 
-    ownership get_result() noexcept {
+    ownership value() noexcept {
         //this is called when we acquired ownership, no extract action is needed
         //just create ownership
         return ownership(this);
@@ -235,4 +235,4 @@ protected:
 
 
 
-#endif /* SRC_COCLASSES_MUTEX_H_ */
+#endif /* SRC_cocls_MUTEX_H_ */

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef SRC_COCLASSES_COMMON_H_
-#define SRC_COCLASSES_COMMON_H_
+#ifndef SRC_cocls_COMMON_H_
+#define SRC_cocls_COMMON_H_
 
 #include <algorithm>
 #include <concepts>
@@ -24,6 +24,28 @@
 #define CXX20_REQUIRES(...) requires __VA_ARGS__
 #else
 #define CXX20_REQUIRES(...)
+#endif
+
+
+
+///Defines multiplier for all statically allocated storages for coroutines
+/**
+ * In current C++ version (C++20) it is very difficult to determine space needed to
+ * coroutine frame. The value must be determined by guessing, trial and error. The
+ * final value can be valid for some compilers. For other compilers, the value can
+ * be insufficient which results to assert (in debug) or not using static storage at all.
+ * If this happen, you can redefine COCLS_STATIC_STORAGE_MULTIPLIER and specify how much this
+ * number must be increased globally. The value is in percent, so setting 150 means, that all
+ * sizes are multiplied by 1.5 times.
+ *
+ * This constant can be passed at command line as -DCOCLS_STATIC_STORAGE_MULTIPLIER=150
+ */
+#ifndef COCLS_STATIC_STORAGE_MULTIPLIER
+#ifdef _WIN32
+#define COCLS_STATIC_STORAGE_MULTIPLIER 250
+#else
+#define COCLS_STATIC_STORAGE_MULTIPLIER 100
+#endif
 #endif
 
 ///Coroutine classes use this namespace
@@ -52,4 +74,4 @@ namespace cocls {
 }
 
 
-#endif /* SRC_COCLASSES_COMMON_H_ */
+#endif /* SRC_cocls_COMMON_H_ */

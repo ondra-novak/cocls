@@ -39,7 +39,6 @@ public:
      * @return future object
      */
     future<T> start() {
-        async_promise<T> &promise = _h.promise();
         return future<T>(std::move(*this));
     }
 
@@ -50,7 +49,7 @@ public:
      * @retval true sucefully started, promise was claimed
      * @retval false failed to claim the promise, the coroutine remains suspended
      */
-    bool start_set_promise(cocls::promise<T> &p) {
+    bool start(cocls::promise<T> &p) {
         async_promise<T> &promise = _h.promise();
         promise._future = p.claim();
         if (promise._future) {

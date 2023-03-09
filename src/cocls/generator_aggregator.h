@@ -1,9 +1,9 @@
 /** @file generator_aggregator.h */
-#ifndef SRC_COCLASSES_GENERATOR_AGGREGATOR_H_
-#define SRC_COCLASSES_GENERATOR_AGGREGATOR_H_
+#ifndef SRC_cocls_GENERATOR_AGGREGATOR_H_
+#define SRC_cocls_GENERATOR_AGGREGATOR_H_
 #include "generator.h"
 #include "queue.h"
-#include "detached.h"
+
 
 namespace cocls {
 
@@ -16,20 +16,18 @@ template<typename T, typename Arg>
 using GenAggrQueue = queue<GenCallback<T, Arg> *,primitives::std_queue, primitives::single_item_queue>;
 
 template<typename T, typename Arg>
-class GenCallback: public abstract_awaiter {
+class GenCallback: public awaiter {
 public:
-    GenCallback(GenAggrQueue<T, Arg> &q,generator<T, Arg> gen):_q(q), _gen(std::move(gen)) {}
+    GenCallback(GenAggrQueue<T, Arg> &q,generator<T, Arg> gen):_q(q), _gen(std::move(gen)) {
+        set_resume_fn([](awaiter *me, void *, std::coroutine_handle<> &) noexcept{
+            auto _this = static_cast<GenCallback *>(me);
+            _this->_q.push(_this);
+        });
+    }
     GenCallback(const GenCallback &) =delete;
     GenCallback(GenCallback &&) =default;
     GenCallback &operator=(const GenCallback &) = delete;
 
-    virtual void resume() noexcept override  {
-        _q.push(this);
-    }
-    virtual std::coroutine_handle<> resume_handle() noexcept override  {
-        GenCallback<T, Arg>::resume();
-        return std::noop_coroutine();
-    }
     template<typename ... Args>
     void charge(Args && ... args) {
         _gen.next(std::forward<Args>(args)...).subscribe_awaiter(this);
@@ -138,4 +136,4 @@ generator<T, Arg> generator_aggregator(std::vector<generator<T, Arg> > list__) {
 
 
 }
-#endif /* SRC_COCLASSES_GENERATOR_AGGREGATOR_H_ */
+#endif /* SRC_cocls_GENERATOR_AGGREGATOR_H_ */

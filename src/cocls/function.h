@@ -5,8 +5,8 @@
  *      Author: ondra
  */
 
-#ifndef SRC_COCLASSES_FUNCTION_H_
-#define SRC_COCLASSES_FUNCTION_H_
+#ifndef SRC_cocls_FUNCTION_H_
+#define SRC_cocls_FUNCTION_H_
 #include "common.h"
 #include <type_traits>
 #include <functional>
@@ -181,4 +181,4 @@ protected:
 
 
 
-#endif /* SRC_COCLASSES_FUNCTION_H_ */
+#endif /* SRC_cocls_FUNCTION_H_ */

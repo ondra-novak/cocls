@@ -5,74 +5,19 @@
 
 #include "common.h"
 #include "generics.h"
+#include "alloca_storage.h"
+#include "with_allocator.h"
+#include "async.h"
 
 namespace cocls {
 
-///purpose of scoped coroutine is to be held in a scope and it is destroyed when the handle leaves scope
-/** Scoped coroutine is best candidate for allocation elision. However because
- * the coroutine is destroyed by the destructor, you must be careful about the coroutine
- * state. You should await to destroy coroutine when it is awaiting for anything. You must
- * send some notification about its finish before you can destroy it;
- */
-class scoped_coroutine {
-public:
-    struct promise_type {
-        std::suspend_never initial_suspend() {return {};}
-        std::suspend_always final_suspend() noexcept {return {};}
-        void return_void() {};
-        void unhandled_exception() {}
-        scoped_coroutine get_return_object() {
-            return scoped_coroutine(std::coroutine_handle<promise_type>::from_promise(*this));
-        }
-    private:
-#ifdef NDEBUG
-        void *operator new(std::size_t);
-#endif
 
-    };
+namespace _details {
 
-    scoped_coroutine() = default;
-    scoped_coroutine(std::coroutine_handle<promise_type> h):_h(h) {}
-    scoped_coroutine(scoped_coroutine &&other):_h(other._h) {other._h = nullptr;}
-    scoped_coroutine &operator=(scoped_coroutine &&other) {
-        if (this != &other) {
-            if (_h) _h.destroy();
-            _h = other._h;
-            other._h = nullptr;
-        }
-        return *this;
-    }
-    ~scoped_coroutine() {
-        if (_h) {
-            assert("Destroying running coroutine" && _h.done());
-            _h.destroy();
-        }
-    }
-
-protected:
-    std::coroutine_handle<promise_type> _h;
-};
-
-
-
-///registers callback to await a specified awaitable or awaiter.
-/**
- *
- * @tparam Awt type of awaitable. You need to specify with & to use reference or
- *  && to pass rvalue reference. Otherwise it is passed by copy or by move (if std::move
- *  is used or rvalue is passed)
- *
- * @param awt awaitable object (or awaiter)
- * @param fn function which is called when await is complete. Note that callback function
- * must have two variants of arguments. If there is an exception, the function
- * is called with std::exception_ptr as an argument
- *
- * @return coroutine which is must not be destroyed before awaitable operation is complete.
- * It can be stored in stack. This also helps to elide allocation
- */
-template<typename Awt, typename Fn>
-scoped_coroutine callback_await(Awt awt, Fn fn) {
+template<typename Alloc, typename Awt, typename Fn, typename ... Args>
+async<void> callback_await_coro(Alloc &, Fn fn, Args ... args) {
     using RetVal = awaiter_return_value<Awt>;
+    Awt awt(std::forward<Args>(args)...);
     try {
         if constexpr(std::is_void_v<RetVal>) {
             co_await awt;
@@ -85,8 +30,69 @@ scoped_coroutine callback_await(Awt awt, Fn fn) {
     }
 }
 
+}
 
+///registers callback to await a specified awaitable or awaiter.
+/**
+ *
+ * @tparam Awt type of awaitable.
+ *
+ * @param fn function which is called when await is complete. Note that callback function
+ * must have two variants of arguments. If there is an exception, the function
+ * is called with std::exception_ptr as an argument
+ * @param args arguments to construct the awaitable. There are awaitable which are
+ *      not move constructible or copy constructible. So you can pass arguments
+ *      to construct the awaitable to co_await on it
+ */
+template<typename Awt, typename Fn, typename ... Args>
+void callback_await(Fn &&fn, Args && ... args) {
+    default_storage stor;
+    _details::callback_await_coro<default_storage, Awt, Fn, Args...>(
+        stor, std::forward<Fn>(fn), std::forward<Args>(args)...).detach();
+}
 
+///registers callback to await a specified awaitable or awaiter.
+/**
+ *
+ * @tparam Awt type of awaitable.
+ * @param alloc reference to an allocator. The allocator must remain valid until
+ *  the callback is called
+ * @param fn function which is called when await is complete. Note that callback function
+ * must have two variants of arguments. If there is an exception, the function
+ * is called with std::exception_ptr as an argument
+ * @param args arguments to construct the awaitable. There are awaitable which are
+ *      not move constructible or copy constructible. So you can pass arguments
+ *      to construct the awaitable to co_await on it
+ */
+template<typename Alloc, typename Awt, typename Fn, typename ... Args>
+void callback_await(Alloc &alloc, Fn fn, Args &&... args) {
+    _details::callback_await_coro<Alloc, Awt, Fn, Args...>(
+        alloc, std::forward<Fn>(fn), std::forward<Args>(args)...).detach();
+
+}
+
+namespace _details {
+    template<typename X, typename ... Args>
+    struct is_exception_test {
+        static constexpr bool val = std::is_base_of_v<std::exception_ptr, std::decay_t<X> >;
+    };
+}
+
+/// determines, whether argument is (are) exception
+/**
+ * @retval true argument is exception
+ * @retval false argument is not exception
+ *
+ * @note as the function is constexpr, it can be used int if constexpr()
+ */
+template<typename ... Args>
+inline constexpr bool is_exception(Args && ... x) {
+    if constexpr(sizeof...(x) == 1 && _details::is_exception_test<Args...>::val) {
+        return true;
+    } else {
+        return false;
+    }
+}
 
 
 

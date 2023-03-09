@@ -2,12 +2,13 @@
  * @file future.h
  */
 #pragma once
-#ifndef SRC_COCLASSES_FUTURE_H_
-#define SRC_COCLASSES_FUTURE_H_
+#ifndef SRC_cocls_FUTURE_H_
+#define SRC_cocls_FUTURE_H_
 
 #include "awaiter.h"
 #include "exceptions.h"
 #include "with_allocator.h"
+#include "async.h"
 
 
 #include <assert.h>
@@ -149,7 +150,7 @@ public:
      * It can be used manually. You need to obtain promise by calling the function get_promise(), then
      * future can be awaited
      */
-    future():_awaiter(&empty_awaiter::instance) {};
+    future():_awaiter(&awaiter::instance) {};
 
     ///construct future, calls function with the promise
     /**
@@ -174,16 +175,16 @@ public:
     template<typename ... Args>
     future(__SetValueTag, Args && ... args)
         :_value(std::forward<Args>(args)...)
-        ,_awaiter(&empty_awaiter::disabled)
+        ,_awaiter(&awaiter::disabled)
         ,_state(State::value){}
 
     future(__SetExceptionTag, std::exception_ptr e)
         :_exception(std::move(e))
-        ,_awaiter(&empty_awaiter::disabled)
+        ,_awaiter(&awaiter::disabled)
         ,_state(State::exception){}
 
     future(__SetNoValueTag)
-        :_awaiter(&empty_awaiter::disabled)
+        :_awaiter(&awaiter::disabled)
         ,_state(State::not_value){}
 
     ///construct by future_coro - companion coroutine result
@@ -195,9 +196,9 @@ public:
      * but note that future<> is not movable, but future_coro<> is movable
      *
      */
-    future(async<T> &&coro):_awaiter(&empty_awaiter::instance) {
+    future(async<T> &&coro):_awaiter(&awaiter::instance) {
         auto p = get_promise();
-        coro.start_set_promise(p);
+        coro.start(p);
     }
 
     ///Resolves future by a value
@@ -217,12 +218,12 @@ public:
     }
 
 
-    using awaiter = abstract_awaiter;
+
 
     ///retrieves promise from unitialized object
     promise<T> get_promise() {
         [[maybe_unused]] auto cur_awaiter = _awaiter.exchange(nullptr, std::memory_order_relaxed);
-        assert("Invalid future state" && cur_awaiter== &empty_awaiter::instance);
+        assert("Invalid future state" && cur_awaiter== &awaiter::instance);
         return promise<T>(*this);
     }
 
@@ -271,7 +272,7 @@ public:
      * or a can be already resolved.
      */
     bool initialized() const {
-        return _awaiter.load(std::memory_order_relaxed) == &empty_awaiter::instance;
+        return _awaiter.load(std::memory_order_relaxed) == &awaiter::instance;
     }
 
     ///determines, whether future is pending. There is associated promise.
@@ -282,7 +283,7 @@ public:
      */
     bool pending() const  {
         auto s = _awaiter.load(std::memory_order_relaxed);
-        return s != &empty_awaiter::instance && s!= &empty_awaiter::disabled;
+        return s != &awaiter::instance && s!= &awaiter::disabled;
     }
 
     ///determines, whether result is already available
@@ -293,7 +294,7 @@ public:
      * @retval false the future has no value, it could be not-initialize or pending
      */
     bool ready() const {
-        return _awaiter.load(std::memory_order_acquire) == &empty_awaiter::disabled;
+        return _awaiter.load(std::memory_order_acquire) == &awaiter::disabled;
     }
 
     ///retrieves result value (as reference)
@@ -373,7 +374,7 @@ public:
      * doesn't access the value, it doesn't thrown exception
      */
     void sync() const noexcept {
-        co_awaiter<future<T> >(*const_cast<future<T> *>(this)).wait();
+        co_awaiter<future<T> >(*const_cast<future<T> *>(this)).sync();
     }
 
     ///Wait asynchronously, return value
@@ -401,7 +402,7 @@ public:
      * @retval true awaiter subscribed and waiting
      * @retval false awaiter not subscribed, the result is already available
      */
-    bool subscribe(abstract_awaiter *awt) {
+    bool subscribe(awaiter *awt) {
         return subscribe_awaiter(awt);
     }
 
@@ -414,7 +415,7 @@ public:
         bool await_ready() noexcept {return this->_owner.ready();}
         bool await_resume() noexcept {return this->_owner._state != State::not_value;}
         bool await_suspend(std::coroutine_handle<> h) {
-            this->_h = h;
+            this->set_handle(h);
             return this->_owner.subscribe_awaiter(this);
         }
         operator bool() const {
@@ -493,7 +494,7 @@ protected:
     //need for co_awaiter
     bool is_ready() const {return ready();}
     //need for co_awaiter
-    bool subscribe_awaiter(abstract_awaiter *x) {return x->subscribe_check_ready(_awaiter, empty_awaiter::disabled);}
+    bool subscribe_awaiter(awaiter *x) {return x->subscribe_check_ready(_awaiter, awaiter::disabled);}
     //need for co_awaiter
     reference get_result() {return value();}
 
@@ -513,11 +514,11 @@ protected:
     }
 
     void resolve() {
-        awaiter::resume_chain_set_ready(_awaiter, empty_awaiter::disabled, nullptr);
+        awaiter::resume_chain_set_ready(_awaiter, awaiter::disabled, nullptr);
     }
     std::coroutine_handle<> resolve_resume() {
         auto n = std::noop_coroutine();
-        awaiter *x = _awaiter.exchange(&empty_awaiter::disabled, std::memory_order_release);
+        awaiter *x = _awaiter.exchange(&awaiter::disabled, std::memory_order_release);
         while (x != nullptr) {
             auto a = x;
             x = x->_next;
@@ -665,6 +666,45 @@ public:
         };
     }
 
+
+    ///construct the associated future, suspend current coroutine and switch to other coroutine
+    /**
+     * @param args arguments to construct the future's value - same as its constructor. For
+     * promise<void> arguments are ignored
+     * @return handle to coroutine to be resumed.
+     *
+     * Main purpose of this function is to be called during await_suspend(). During
+     * this function, the coroutine can resolve the future and then execution is switched
+     * to associated coroutine which can process the result
+     *
+     * @note function returns coroutine handle to resume. Do not discard result, if you
+     * has no use for the result, call resume() on the result
+     */
+    template<typename ... Args>
+    [[nodiscard]] std::coroutine_handle<> set_value_and_suspend(Args && ... args) {
+        auto m = claim();
+        if (m) {
+            m->set(std::forward<Args>(args)...);
+            return m->resolve_resume();
+        } else {
+            return std::noop_coroutine();
+        }
+    }
+
+    ///drop promise during current coroutine is being suspended
+    /**
+     * @return handle to coroutine to be resumed
+     */
+    [[nodiscard]] std::coroutine_handle<> drop_and_suspend() {
+        auto m = claim();
+        if (m) {
+            return m->resolve_resume();
+        } else {
+            return std::noop_coroutine();
+        }
+    }
+
+
 protected:
 
     ///to allows direct access from derived classes
@@ -772,19 +812,28 @@ public:
  * @see make_promise()
  */
 template<typename T, typename Fn>
-class future_with_cb: public future<T>, public abstract_awaiter {
+class future_with_cb: public future<T>, public awaiter {
 public:
 
     ///Construct a future and pass a callback function
     future_with_cb(Fn &&fn):_fn(std::forward<Fn>(fn)) {
         this->_awaiter = this;
+        set_resume_fn([](awaiter *me, auto, auto) noexcept {
+            auto _this = static_cast<future_with_cb<T,Fn> *>(me);
+            _this->_fn(*_this);
+            delete _this;
+        });
     }
-    virtual void resume() noexcept override {
-        _fn(*this);
-        delete this;
-    }
+
     promise<T> get_promise() {
         return promise<T>(*this);
+    }
+
+    template<typename Factory>
+    CXX20_REQUIRES(std::same_as<future<T>, decltype(std::declval<Factory>()())>)
+    future_with_cb &operator << (Factory &&fn) {
+        future<T>::operator<<(std::forward<Factory>(fn));
+        return *this;
     }
 
     virtual ~future_with_cb() = default;
@@ -853,31 +902,32 @@ future(async<T>) -> future<T>;
  * discard([&]{function_returning_future();});
  */
 template<typename Fn>
-CXX20_REQUIRES(std::derived_from<future_tag, decltype(std::declval<Fn>()())>)
 void discard(Fn &&fn) {
-    using fut_type = decltype(std::declval<Fn>()());
+    using fut_type = std::decay_t<decltype(std::declval<Fn>()())>;
 //    using T = typename fut_type::value_type;
-    class Awt: public abstract_awaiter {
+    class Awt: public awaiter {
     public:
-        Awt(Fn &fn):_fut(fn()) {
-            _waiting = (_fut.operator co_await()).subscribe_awaiter(this);
+        Awt(Fn &&fn, bool &waiting):_fut(fn()) {
+            set_resume_fn(&fin);
+            waiting = (_fut.operator co_await()).subscribe_awaiter(this);
         }
 
-        virtual void resume() noexcept override {
-            delete this;
+        static void fin(awaiter *me, void *, std::coroutine_handle<> &) noexcept {
+            auto _this = static_cast<Awt *>(me);
+            delete _this;
         }
-        bool _waiting;
     protected:
         fut_type _fut;
     };
 
-    auto x = new Awt(fn);
-    if (!x->_waiting) x->resume();
+    bool w;
+    auto x = new Awt(std::forward<Fn>(fn), w);
+    if (!w) x->resume();
 }
 
 
 
 
 }
-#endif /* SRC_COCLASSES_FUTURE_H_ */
+#endif /* SRC_cocls_FUTURE_H_ */
 

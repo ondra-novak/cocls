@@ -1,6 +1,6 @@
 #pragma once
-#ifndef SRC_COCLASSES_SRC_COCLASSES_WITH_ALLOCATOR_H_
-#define SRC_COCLASSES_SRC_COCLASSES_WITH_ALLOCATOR_H_
+#ifndef SRC_cocls_SRC_cocls_WITH_ALLOCATOR_H_
+#define SRC_cocls_SRC_cocls_WITH_ALLOCATOR_H_
 
 
 #include "common.h"
@@ -77,8 +77,21 @@ public:
 };
 
 
+/// default storage equivalent to declare coroutine without allocator
+/** Can be used where Allocator teplate is enforced and we need to fallback to default allocator */
+class default_storage {
+public:
+    static void *alloc(std::size_t sz) {
+        return ::operator new(sz);
+    }
+    static void dealloc(void *ptr, std::size_t sz) {
+        return ::operator delete(ptr);
+    }
+};
+
+
 }
 
 
 
-#endif /* SRC_COCLASSES_SRC_COCLASSES_WITH_ALLOCATOR_H_ */
+#endif /* SRC_cocls_SRC_cocls_WITH_ALLOCATOR_H_ */

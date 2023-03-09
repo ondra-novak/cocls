@@ -19,4 +19,7 @@ int main(int, char **) {
     ///run scheduler until task finishes
     sch.start(task);
 
+    auto task2 = test_co(sch);
+    sch.start(task2);
+
 }

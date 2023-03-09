@@ -2,8 +2,8 @@
  * @file exceptions.h
  */
 #pragma once
-#ifndef SRC_COCLASSES_EXCEPTIONS_H_
-#define SRC_COCLASSES_EXCEPTIONS_H_
+#ifndef SRC_cocls_EXCEPTIONS_H_
+#define SRC_cocls_EXCEPTIONS_H_
 
 #include <stdexcept>
 
@@ -48,4 +48,4 @@ public:
 
 
 
-#endif /* SRC_COCLASSES_EXCEPTIONS_H_ */
+#endif /* SRC_cocls_EXCEPTIONS_H_ */

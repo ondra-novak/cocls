@@ -1,8 +1,8 @@
 ifdef BUILD_PROFILE
 	FORCE_BUILD_PROFILE=__NOT_EXIST__
 else
-	FORCE_BUILD_PROFILE=current_profile.mk
-	-include current_profile.mk
+	FORCE_BUILD_PROFILE=.current_profile.mk
+	-include .current_profile.mk
 endif
 
 ifndef BUILD_PROFILE
@@ -22,15 +22,17 @@ install:
 
 $(FORCE_BUILD_PROFILE):
 	echo $(FORCE_BUILD_PROFILE)
-	$(file >current_profile.mk,BUILD_PROFILE=$(BUILD_PROFILE))
+	$(file >.current_profile.mk,BUILD_PROFILE=$(BUILD_PROFILE))
 
-build/debug/Makefile:  $(BUILD_PROFILE) $(FORCE_BUILD_PROFILE) | build/debug/conf build/debug/log build/debug/data
+build/debug/Makefile:  $(BUILD_PROFILE) $(FORCE_BUILD_PROFILE) | build/debug/conf build/debug/log build/debug/data	
 	mkdir -p build/debug/log
-	cmake -G "Unix Makefiles" -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug `grep -E -v "^[[:blank:]]*#" $(BUILD_PROFILE)`
+	rm -f build/debug/CMakeCache.txt
+	cmake -G "Unix Makefiles" -S . -B build/debug `grep -E -v "^[[:blank:]]*#" $(BUILD_PROFILE)` -DCMAKE_BUILD_TYPE=Debug 
 
 build/release/Makefile: $(BUILD_PROFILE) $(FORCE_BUILD_PROFILE) | build/release/conf build/release/log build/release/data
 	mkdir -p build/release/log
-	cmake -G "Unix Makefiles" -S . -B build/release -DCMAKE_BUILD_TYPE=Release `grep -E -v "^[[:blank:]]*#" $(BUILD_PROFILE)`
+	rm -f build/release/CMakeCache.txt
+	cmake -G "Unix Makefiles" -S . -B build/release `grep -E -v "^[[:blank:]]*#" $(BUILD_PROFILE)` -DCMAKE_BUILD_TYPE=Release
 
 build/debug/conf: | build/debug conf 
 	cd build/debug; ln -s ../../conf conf

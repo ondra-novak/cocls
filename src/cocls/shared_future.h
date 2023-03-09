@@ -50,12 +50,9 @@ class shared_future {
 
     class future_internal;
 
-    class resolve_cb: public abstract_awaiter {
+    class resolve_cb: public awaiter {
     public:
         void charge(std::shared_ptr<future_internal> ptr);
-        virtual void resume() noexcept override {
-            _ptr = nullptr;
-        }
     protected:
         std::shared_ptr<Base> _ptr;
     };
@@ -119,8 +116,7 @@ public:
      * the future
      * @param coro coroutine result
      */
-    template<typename _Policy>
-    shared_future(future_coro<T, _Policy> &&coro)
+    shared_future(async<T> &&coro)
         :_ptr(std::make_shared<future_internal>(std::move(coro))) {
         _ptr->resolve_tracer.charge(_ptr);
     }
@@ -201,6 +197,9 @@ protected:
 
 template<typename T, typename Base>
 inline void shared_future<T,Base>::resolve_cb::charge(std::shared_ptr<future_internal> ptr) {
+        this->set_resume_fn([](awaiter *x, auto, auto) noexcept {
+            static_cast<resolve_cb *>(x)->_ptr = nullptr;
+        });
        _ptr = ptr;
        if (!(ptr->operator co_await()).subscribe_awaiter(&ptr->resolve_tracer)) {
            _ptr = nullptr;
