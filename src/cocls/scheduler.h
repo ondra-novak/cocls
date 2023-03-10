@@ -442,7 +442,7 @@ protected:
         _glob_state.emplace();
         auto promise = _glob_state->_fut.get_promise();
         thr = std::thread([this,promise = std::move(promise)]() mutable {
-            worker_coro<false>(_glob_state->_stp.get_token()).start(promise);
+            worker_coro<false>(_glob_state->_stp.get_token()).start (promise);
         });
     }
 };

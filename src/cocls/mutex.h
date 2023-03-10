@@ -44,7 +44,7 @@ protected:
     class ownership_deleter {
     public:
         void operator()(mutex *mx) {
-            mx->unlock();
+            mx->unlock([](auto awt){awt->resume();});
         }
     };
 
@@ -69,6 +69,9 @@ public:
         assert(_requests == nullptr);
     }
 
+
+    class release_awt;
+
     ///Contains ownership of the mutex
     /** By holding this object, you owns an ownership */
     class ownership {
@@ -79,11 +82,15 @@ public:
         ownership &operator=(const ownership &) = delete;
         ownership(ownership &&) = default;
         ownership &operator=(ownership &&) = default;
-        ///Release ownership
+        ///Release ownership manually
         /**
-         * From now, ownership is not held, even if you still have the object
+         * This function is awaitable! If you co_await result, then execution is
+         * immediately transfer to new owner. Current coroutine is suspended and
+         * pushed to the resume queue (like pause())
          */
-        void release() {_ptr.reset();}
+        release_awt release() {
+            return release_awt(std::move(*this));
+        }
 
         ///Returns true, if you still owns the mutex (not released)
         /**
@@ -100,6 +107,7 @@ public:
     protected:
         ownership(mutex *mx):_ptr(mx) {}
         friend class mutex;
+        friend class release_awt;
         std::unique_ptr<mutex, ownership_deleter> _ptr;
     };
 
@@ -124,6 +132,23 @@ public:
     }
 
 
+    class release_awt: public std::suspend_always {
+    public:
+        release_awt(ownership &&own):_own(std::move(own)) {}
+        std::coroutine_handle<> await_suspend(std::coroutine_handle<> h) {
+            mutex *mx = _own._ptr.release();
+            if  (mx) {
+                mx->unlock([&](awaiter *awt) {
+                    coro_queue::resume(h);
+                    h = awt->resume_handle();
+                });
+            }
+            return h;
+        }
+    protected:
+        ownership _own;
+    };
+
 protected:
 
     friend class ::cocls::co_awaiter<mutex>;
@@ -145,7 +170,8 @@ protected:
         return &awaiter::instance;
     }
 
-    void unlock() {
+    template<typename Fn>
+    void unlock(Fn &&fn) {
         //lock must be locked to unlock
         assert(_requests.load(std::memory_order_relaxed) != nullptr);
         //unlock operation check _queue, whether there are requests
@@ -171,7 +197,7 @@ protected:
         //clear _next ptr to avoid leaking invalid pointer to next code
         first->_next = nullptr;
         //resume awaiter - it has ownership now
-        first->resume();
+        fn(first);
         //now the _queue is also handled by the new owners
     }
 

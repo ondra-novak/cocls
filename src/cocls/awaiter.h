@@ -279,7 +279,20 @@ inline void co_awaiter<promise_type>::sync() noexcept  {
     }
 }
 
+struct [[nodiscard]] switch_to_awt: std::suspend_always {
+    switch_to_awt(std::coroutine_handle<> h):_h(h) {}
 
+    std::coroutine_handle<> _h;
+    std::coroutine_handle<> await_suspend(std::coroutine_handle<> h) {
+        if (h != _h) coro_queue::resume(h);
+        return _h;
+    }
+};
+
+
+switch_to_awt switch_to(std::coroutine_handle<> h) {
+    return h;
+}
 
 
 }

@@ -245,7 +245,12 @@ int result = co_await f;
 
 Promise by měla být nakonec nastavena. Avšak je možné promisu zničit bez nastavení hodnoty. Tomuto stavu se říká "drop". Pokud je promisa dropnuta, není nikdo, kdo by čekající futuru nastavil. V takovém případě je do future nastaven stav "bez hodnoty". Při pokusu načíst tuto hodnotu se pak výhodí výjimka na straně čekající korutiny
 
-Promise může být dropnuta i ručně pomocí funkce `drop()`
+Promise může být dropnuta i ručně zavoláním promise s parametrem `cocls::drop`. To je konstanta, která způsobí, že future bude nastavena bez hodnoty
+
+```
+    promise<int> p = ...;
+    p(cocls::drop); //drop promise
+```
 
 ### Nastavení výjimku
 
@@ -316,6 +321,52 @@ co_await switch_to(p,value);
 ```
 
 Funkce switch_to musí být zavolána v korutině v příkazem `co_await`. V rámci operace nastaví danou promise, uspí aktuální korutinu a zařadí jí do fronty (jako pause()) a obnoví čekající korutinu, která si okamžitě může načíst hodnotu. Řízení je předáno pomocí symmetrického transferu. Pokud je obnovena korutina zase uspána nebo ukončena, je současná korutina obnovena v závislosti na stavu fronty.
+
+
+## Awaiter
+
+```
+#include <cocls/awaiter.h>
+```
+
+Awaiter je objekt, který lze použít s operátorem `co_await`. Může být přímo i awaitable - tedy objekt, který podporuje `co_await` operaci - nebo může být vytvořen awaitable objektem před zahájením čekání.
+
+Awaiter často vzniká jako důsledek zavolání **operator co_await** na awaitable objektu nebo funkci
+
+V knihovně `cocls` je základovou třídu pro většinu awaiterů třída `awaiter`. Přes tuto base třídu lze přistupovat k awaiteru, na kterém byla korutina uspána. Obsahuje dvě funkce
+
+* **resume()** - probudí spící korutinu
+* **resume_handle()** - vrátí handle spící korutiny, má se za to, že účelem volání je korutinu probudit skrze handle.
+
+Awaitery se často registrují na kolektorech tak aby třída, která má schopnost uspávat a probouzet korutiny, dokázala snadno identifikovat a probudit korutinu, kterou probudit chce.
+
+Využívá se faktu, že během toho, co korutina je uspaná, tak její awaiter, na kterém spí, nikam neodejde, jeho pointer bude platný po celou dobu uspání. A jakmile je korutina probuzena, není třeba více přistupovat na objet awaiter.
+
+Pro správu většího množství awaiterů se zakládá kolektor, který je reprezentován jako `std::atomic<awaiter *> _awt_collector`. Awaiter dále nabízí funkci **subscribe(collector)** kterým lze MT-safe přidat awaitera do kolektoru. Na druhé strane pak metodu **resume_chain**, kterou lze atomicky probudit všechny korutiny čekající v daném kolektoru. Někdy je potřeba kolektor i deaktivovat, aby nepřijímal další registrace. K tomu slouží **subscribe_check_disabled()**, která provede registraci jen když není kolektor deaktivovaný. K tomu existuje opačná operace **resume_chain_set_ready**, tato operace atomicky obnoví všechny korutiny a zároveň deaktivuje kolektor. Jako deaktivující hodnota se používá globální instance `&awaiter::disabled`;
+
+### Použití awaiteru k notifikaci o dokončení operace
+
+Awaiter však nemusí jen budit korutinu. Awaiter nabízí funkcí `set_resume_fn`, kterou lze nastavit funkci, která se zavolá v situaci, kdy by měla bý korutina zbuzena. Tímto lze relizovat například `callback_awaiter` - zavolá callback.
+
+Rozhraní `set_resume_fn` očekává C-like statickou funkci - lze použít lambdu bez clousure. Funkce má následující prototip
+
+```
+static void resume_fn(awaiter *_this, void *_context, std::coroutine_handle<> &_out_handle) noexcept;
+```
+
+* **_this** - pointer na `awaiter` jehož instance byla oslovena. Pokud dědíme awaitera, musíme si pointer `static_cast<>`
+* **_context** - libovolný ukazatel na cokoliv, nastavují se funkcí `set_resume_fn`
+* **_out_handle** - reference na handle nějaké korutiny, je považován za výstupní proměnnou. Funkce jej může ignorovat pokud jej nepoužívá. Pokud však výsledkem zpracování je korutina, která má být probuzena, je vhodní nastavit její handle do této proměnné před návratem z funkce. Je to efektivnější, než ve funkci volat přímo `handle.resume()`
+
+Volba **statické funkce bez kontextu** byla zvolena za účelem udržení objektu awaiter v jednoduchém layout bez nutnosti alokovat paměť například pro clousure dané funkce. Ten kdo si awaitery dědí má z pravidla přístup k dalším částem svého objektu zkrze *_this*. Bylo také záměrně upuštěno od použití virtuálních funkcí, protože většina awaiterů `resume_fn` nepoyužívá a je orientováno čistě na korutiny, kde se funkce nevolá a tím se redukuje množství indirekce.
+
+* `co_awaiter<promise_type>` - zajišťuje operaci co_await na většině awaitable objektů
+* `sync_awaiter` - umožňuje uspávat a probouze celá vlákna (`sync_awaiter::wait_sync`)
+* `switch_to_awt` - implementuje přepnutí kontextu pro funkcí `switch_to`
+* `self` - neuspí korutinu, ale vrací její handle `auto myhandle = co_await self()`
+* `thread_pool::co_awaiter` - přestěhuje korutinu do jiného vlákna
+
+
 
 
 ## Generátor
@@ -589,6 +640,9 @@ Fronta umožňuje nechat korutiny reagovat na hodnoty vkládané do fronty
 * Pokud je fronta prázdná, pak operace pop() způsobí, že aktuální korutina je uspaná a je následně probuze první vloženou hodnotou
 * Pokud fronta není prázdné, pak operace pop() korutinu neuspí a je ihned vybrána první hodnota z fronty
 * Pokud je fronta limited_queue plná, pak korutina volající operaci  push() je uspána a je následně probuzena pokud někdo vyzvedne první hodnotu z fronty a uvolní v ní místo.
+* Na hodnoty ve froně může čekat víc korutin současně (multiple consumers). 
+* Pushovat hodnot může vícero producerů, operace je MT bezpečná. (multiple producers)
+* V případě limited_queue<T> může vícero producerů čekat na uvolnění místa ve frontě při push()
 
 **Poznámka** - funkce pop() a funkce push() (u limited-queue) vrací future<T>.
 
@@ -618,4 +672,247 @@ void stop_reader(queue<int> &q) {
 nedojde
 
 Typické použití je k implementaci timeoutu. Koroutina, která čte si nainstaluje timer, který zavolá `unblock_pop`, pokud vyprší čas čekání na hodnotu ve frontě. Pakliže je hodnota získána, může být timer odinstalován. 
+
+## Signal
+
+Signal je objekt, který propojuje dvě části kódu, kdy jedna generuje signály v podobě hodnot (signal generator) a druhá je těm signálům naslouchá a reaguje na ně. Je to podobný pattern jako producer a consumer. 
+
+Rozdíl mezi frontou a signálem je v těsnější vazbě mezi vyprodukování hodnoty a její konzumace. Zatímco u fronty může producent generovat nové hodnoty nezávisle na tom, zda je konzumenti stíhají konzumovat, v tomto případě se provádí synchronizace, kdy producent je zastaven do doby, než je produkovaná hodnota z konzumována.
+
+Dalším rozdílem je, že může existovat více konzumentů a všichni obdrží stejnou hodnotu.
+
+Objekt **signal** má dvě strany reprezentované dvěmi podřídami
+
+* **signal::collector** - jedná se o **callable** object. Přijímá argumenty, které se použijí ke konstrukci předané hodnoty. Pokud se hodnota předává jako rvalue reference nebo lvalue reference, pak se interně předává pouze reference a nedochází ke kopii nebo konstrukci hodnoty.
+
+* **signal::emitter** - jedná se o awaitera, na kterého lze čekat pomocí `co_await`. Korutina se uspí a jakmile se objeví signál, je vzbuzena a získá referenci na připojenou hodnotu.
+
+Korutina musí opakovat `co_await` čekání na awaiteru, aby mohla získat další hodnotu. Je přitom nutné, aby korutina nebyla uspána z jiného důvodu než čekání další hodnotu. Pokud se takl stane, může generátor signálu vygenerovat novou hodnotu, která nebude korutinou zachycena (miss), protože na ní nebude čekat.
+
+Vlákno během volání kolektoru je blokováno bo dobu vyvolání všech čekajících korutin. Jakmile je však korutina uspána, vlákno je odblokováno (veškeré čekající korutiny se volají v tomto vlákně). Pokud se tedy korutina přesune do jiného vlákna, odblokuje vlákno kolektoru a proto může kolektor získat novou hodnotu mezitím co korutina čeká na dokončení jiné asynchroní operace.
+
+
+```
+signal<int> sig;
+
+async<void> consumer(signal<int> &sig) {
+    try {
+        auto e = sig.get_emitter();
+        while(true) {
+            int val = co_await e;
+            print(val);
+        }
+    } catch (const await_canceled_exception &) {
+        //done
+    }
+}   
+
+void generate(signal<int> &sig) {
+    auto c = sig.get_collector();
+    for (int i = 0; i < 10; i++) {
+        c(i);
+    }
+}
+
+```
+### Registrace kolektoru až v korutině.
+
+Někdy je potřeba aby korutina sama registrovala kolektor na signal generátoru a přitom už byla připravená přijmout první hodnotu. K tomu slouží **signal<>::hook_up**. Tato funkce přijímá funkci, ve které se očekává kolektor. Funkce má provést registraci kolektoru. Zároveň funkce vrací emitter, na který lze čekat. Registrace se provede při prvním čekání
+
+```
+async<void> consumer(signal_producer<int> &prod) {
+    try {
+        auto e = signal<int>::hook_up([&](auto collector) {
+                prod.subscribe(std::move(collector));
+            });            
+        while(true) {
+            int val = co_await e;
+            print(val);
+        }
+    } catch (const await_canceled_exception &) {
+        //done
+    }
+}   
+
+```
+## Thread pool a plánovač
+
+```
+#include <cocls/thread_pool.h>
+#include <cocls/scheduler.h>
+```
+
+### Thread pool
+
+Objekt `thread_pool` představuje kolekci běžících vláken. Jejich počet se určuje v konstruktoru.
+
+Korutina může alokovat vlákno v thread_poolu tak, že jednoduše použije `co_await` na instanci poolu
+
+```
+async<void> threaded(thread_pool &pool)  {
+    co_await pool;
+    //running in thread pool
+}
+```
+
+Každé vlákno automatick běží v *coro mode*. Každé vlákno tak má k dispozici frontu lokálně připravených korutin. 
+
+Kromě toho, API thread_poolu nabízí následující metody
+
+* **run(...)** - spustí funkci nebo async<> korutinu ve vlákně. Vrací future<T> výsledku (i pro void)
+* **run_detached(...)** - spustí funkci nebo async<> korutinu ve vlákně. Ignoruje výsledek nebo i případnou výjimku
+* **resolve(p,args...)** - nastaví promisu **p** hodnotou konstruovanou pomocí parametru **args**, tuto činnost provede ve vlákně, takže případná korutina čekající na výsledek je v tomtéž vlákně obnovena
+* **any_enqueued()** - vrací **true**, pokud současný běh kódu blokuje nebo může blokovat čekající úlohy nebo korutiny. Je to dobré testovat, pokud by kód chtěl vlákno blokovat. Pakliže je vráceno **true**, pak by se kód měl vyvarovat blokujících operací
+
+Pokud korutina zavolá `co_await pool` ve vlálně, které patří tomu poolu, je to ekvivalentní funkci `co_await pause()` s tím, že korutina může alokovat jiné vlákno a v uvolněném vlákně mohou běžet čekající úlohy.
+
+Samotné `co_await pause()` lze použít, ale pouze přenechá současné vlákno čekajícím korutinám na stejném vlákně, a pak pokračuje ve stejném vlákně
+
+
+
+### Plánovač (scheduler)
+
+Plánovač scheduler zajišťuje zejména časové plánování korutin. Plánovač se buď konstruuje jako úloha běžící v thread_poolu, nebo samostatně. Pokud běží samostatně, povětšinu času blokuje aktuální vlákno na němž provádí plánování korutin, které plánovač používají. Pokud běží v thread_poolu, blokuje jedno vlákno.
+
+```
+scheduler sch1;
+thread_pool pool(10);
+scheduler sch2(pool)
+```
+
+Plánovač lze také spustit v samostatném vlákně - dvěma způsoby
+
+```
+scheduler sch3;
+sch3.start_thread();
+```
+
+```
+std::thread sch_thr;
+scheduler sch4(thr)
+```
+
+Plánovač lze v korutině použít pomocí funkcí **sleep_for** a **sleep_until**. Tyto funkce lze volat přes `co_await`, protože výsledkem volání `future<void>`. 
+
+Součástí volání těchto dvou funkcí je i identifikátor typu `void *`. Tímto identifikátorem lze později naplánovanou operaci zrušit s tím, že patřičná future<void> vyhodí výjimku (kterou lze nastavit)
+
+### Spuštění plánovače v single-thread mode.
+
+Plánovač lze spustit v single-thread mode pomocí funkce **start(Awt)**. Jako parametrem uvedem libovolného awaitera nebo awaitable (například future<T>, stačí jen referenci). Plánovač bude provádět svou plánovací činnost dokud awaiter nebude awaiter aktivován - tedy například u future, dokud nebude hodnota nastavena. Pak funkce vrátí výsledek operace
+
+Funguje to tedy stejným způsobem jako `co_await Awt` s tím, že se používá v *normal mode* a během čekání na výsledek se provádí plánování. Jakmile je výsledek k dispozici, plánování se přeruší - ale registrované úlohy se nesmažou, čili pokud je plánovač znovu spuštěn,  plánovací činnost pokračuje
+
+### Generátor intervalů
+
+Funkce **interval** představuje generátor intervalu. Parametrem se zadává interval. Pokud je generátor zavolán, vrátí future, která se nastaví po zadaném intervalu. Další interval se počítá od času posledního intervalu nezávisle na tom, kolik času uplynulo do dalšího zavolání, za předpokladu, že ten čas nebyl delší než samotný interval.
+
+
+## Korutiny alokované pomocí alokátorů
+
+Běžné korutiny se alokují na heapu. Knihovna cocls však nabízí i možnost alokovat korutinu prostřednictvím alokátoru. Je to určeno pro zkušenější programátory, zato lze dosáhnout vyšší efektivitu při volání korutin. 
+
+### Korutina podporující alokaci alokátorem
+
+Korutinu musíme specificky označit, pokud chceme použít alokátor
+
+```
+with_allocator<Alloc, async<T> > coroutine_with_allocator(Alloc &, ...) {
+
+}
+```
+
+Takto deklarovaná korutina je kompatibilní s `async<T>`. Jako první parametr se předává instance alokátora. Tento parametr sice propadne i do těla korutiny, ale není potřeba jej nijak zpracovávat. Jeho přítomnost v prvním parametru způsobí, že překladač zakomponuje použití alokátoru pro alokaci korutiny.
+
+**TIP:** Někdy je vhodné deklarovat korutinu s generickým alokátorem Alloc - jako šablonu. Umožňuje to vybrat alokátor až při volání. Pro standardní alokaci slouží alokátor `default_storage`
+
+Volání s alokátorem
+
+```
+Alloc allocator(...);
+async<T> coro = coroutine_with_allocator(allocator,...);
+```
+
+Při používání alokátoru je nutné mít na paměti životnost alokátoru a životnost korutiny. Některé alokátory není třeba držet na živu po tom, co jsou k použity při zavolání korutiny, ale drtivá většina vyžaduje, aby alokátor nebyl ukončen před ukončením korutiny.
+
+### Alokátor: default_storage
+
+Alokuje korutiny standardním způsobem na heapu, slouží pro případ, kdy máme korutinu s povinným alokátorem, ale nemáme po ruce žádný alokátor. Tento alokátor není třeba trvale držet
+
+
+### Allocator: reusable storage
+
+Alolkátor slouží k alokaci jedné korutiny současně opakovaně. Vhodné použití je v cyklu, kdy se volá stejná korutina
+
+```
+template<typename Alloc>
+with_allocator<Alloc, async<T> > do_something(Alloc &, int v) {
+
+reusable_storage stor;
+for(auto &v : container) {
+    co_await do_something(stor, v).start();
+}
+```
+
+Alokátor najde uplarnění i ve třídách používající korutiny, kde se nepředpokládá, že by metody byly volány paralelně, tedy že v danou chvíli je aktivní pouze jedna instance korutiny
+
+```
+class Reader {
+public:
+    future<int> read_next() {
+        return read_next_coro(_storage);
+    }
+    
+protected:
+    reusable_storage _storage;
+
+    with_allocator<reusable_storage, async<int> > read_next_coro() {
+        co_await...;
+        co_return ..;
+    }
+};
+```
+
+### Allocator: reusable_storage_mtsafe
+
+Funguje stejně jako reusable_storage, ale detekuje násobné použití alokátoru. Pokud je v době použití v alokátoru alokován rámce nějaké korutiny, pak každá další alokace je vyřízena alokací v heapu. Tímto lze použít reusable_storage v místech, kde není jistota, že nedojde k násobnému volání korutiny a přesto k takové sitaci nedochází často.
+
+### Allocator: promise_extra_storage<T, Alloc>
+
+Tento alokátor alokuje extra prostor pro libovolný objekt, který je nějakým způsobem svázaný s korutinou. Je zajištěno, že tento objekt nebude zničen dřív, než rámec dané korutiny
+
+* **T** definuje typ alokovaného objektu
+* **Alloc** může specifikovat způsob alokace celého rámce. Zde lze použít default_storage nebo reusable_allocator
+
+Objekt se konstruje předáním továrny (factory), která je zodpovědná za inicializaci T. Ihned po konstrukci korutiny je pak objekt dostupný přes operátor -> nebo *
+
+```
+promise_extra_storage<int> storage([]{return 42;});
+async<int> coro = do_something_coro(storage,...);
+print(*storage);
+coro.detach();
+```
+
+
+### Allocator: stack_storage
+
+Tento alokátor obchází problém s nefunkčním coroutine elision v moderních překladačích, kdy překladač není schopen přeskočit alokaci u korutin, které existují v ramci nějaké funkce, tedy přestávají existovat na konci funkce. Tento alokátor umožňuje uložit korutinu na zásobníku, programátor však musí zajistit, že korutina je zničena před opuštěním funkce, jejiž zásobník se použije.
+
+Tento alokátor najde uplatnění zejména v situaci, kdy se část kódu volá opakovaně. Při prvním zavolání totiž nemusí být efektivní
+
+K použití tohoto alokátoru musíme někde deklarovat proměnnou typu std::size_t, která je svázána s korutinou, kterou hodláme volat. Proměnná by měla být staticky alokovaná. Je nutné ji inicializovat na 0. Slouži k uložení informace o tom, jak velký rámce korutina potřebovala (jako že tato informace je dostupná pouze v runtime)
+
+```
+//globální stav
+static std::size_t coro_sz_state = 0;
+//připrav úložiště
+stack_storage storage(coro_sz_state);
+//alokuj místo na zásobníku
+storage = alloca(storage);
+//spust korutiny jejíž frame bude v zásobníku
+async<int> coro = do_something(storage,...);
+```
+
+Objekt `storage` není třeba dále držet, ale je třeba mít na paměti, že alokovaný prostor je rezervovaný jen do konce této funkce. Pokud byl alokovaný prostor příliš malý, pak se korutina alokuje na haldě, ale do sdíleného stavu se uloží požadovaná velikost frame. Při příštím použití stejného sdíleného stavu se bude na zásobníku alokovat prostor této velikosti. 
+
+Výhoda tohoto alokátoru je že pokud se podaří rámec spočítat dostatečně velký, přeskočí se veškerá alokace a frame korutiny je umístěno do zásobníku. 
 

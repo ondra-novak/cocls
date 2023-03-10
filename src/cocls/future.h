@@ -118,6 +118,9 @@ template<typename T>
 class async_promise;
 
 
+///Use value drop to drop promise manually
+enum DropTag {drop};
+
 ///tags all futures, you can use std::base_of<future_tag, T> to determine, whether object
 /// is future
 class future_tag {};
@@ -507,6 +510,7 @@ protected:
         _state = State::value;
     }
 
+
     void set(std::exception_ptr e) {
         assert("Future is ready, can't set value twice" && _state == State::not_value);
         new (&_exception) std::exception_ptr(std::move(e));
@@ -578,13 +582,6 @@ public:
         return *this;
     }
 
-    void drop() {
-        auto m = claim();
-        if (m) {
-            m->resolve();
-        }
-    }
-
     ///construct the associated future
     /**
      * @param args arguments to construct the future's value - same as its constructor. For
@@ -619,6 +616,11 @@ public:
             return true;
         }
         return false;
+    }
+
+    ///Set value DropTag to drop promise manually
+    bool set_value(DropTag) {
+        return drop();
     }
 
     ///Sets exception
@@ -667,6 +669,66 @@ public:
     }
 
 
+    ///Set value to a promise and switch to the awaiting coroutine
+    /**
+     * The function must be called with co_await
+     *
+     * @code
+     * co_await switch_to(promise, val);
+     * @endcode
+     *
+     * Current coroutine is suspended, and associated coroutine (owner of the future) is
+     * immediately resumed with the value. Suspended coroutine is resumed later similar
+     * to how pause() works;
+     *
+     * @note if the owner of the future is not coroutine, resume() is called on
+     * awaiting object and then pause() is used to suspend the current coroutine
+     *
+     * @note if the owner of the future is current coroutine, the coroutine is not suspended
+     *
+     *
+     * @param promise promise to set
+     * @param args arguments passed to the constructor of the value
+     * @return awaiter which must be co_await. The awaited awaiter itself returns void
+     */
+    template<typename X, typename ... Args>
+    friend switch_to_awt switch_to(promise<X> &promise, Args &&...args);
+
+
+protected:
+
+    ///to allows direct access from derived classes
+    /** Sets the future value, but doesn't resolve */
+    template<typename ... Args>
+    static void set(future<T> *what,  Args && ... args) {
+        what->set(std::forward<Args>(args)...);
+    }
+
+    ///to allows direct access from derived classes
+    /** resolves future */
+    static void resolve(future<T> *what) {
+        what->resolve();
+    }
+
+    ///to allows direct access from derived classes
+    /** resolves future from await_suspend or resume_handle*/
+    static std::coroutine_handle<> resolve_resume(future<T> *what) {
+        return what->resolve_resume();
+    }
+
+    bool drop() {
+        auto m = claim();
+        if (m) {
+            m->resolve();
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+
+    mutable std::atomic<future<T> *>_owner;
+
     ///construct the associated future, suspend current coroutine and switch to other coroutine
     /**
      * @param args arguments to construct the future's value - same as its constructor. For
@@ -691,6 +753,15 @@ public:
         }
     }
 
+    [[nodiscard]] std::coroutine_handle<> set_value_and_suspend(DropTag) {
+        auto m = claim();
+        if (m) {
+            return m->resolve_resume();
+        } else {
+            return std::noop_coroutine();
+        }
+    }
+
     ///drop promise during current coroutine is being suspended
     /**
      * @return handle to coroutine to be resumed
@@ -703,30 +774,6 @@ public:
             return std::noop_coroutine();
         }
     }
-
-
-protected:
-
-    ///to allows direct access from derived classes
-    /** Sets the future value, but doesn't resolve */
-    template<typename ... Args>
-    static void set(future<T> *what,  Args && ... args) {
-        what->set(std::forward<Args>(args)...);
-    }
-
-    ///to allows direct access from derived classes
-    /** resolves future */
-    static void resolve(future<T> *what) {
-        what->resolve();
-    }
-
-    ///to allows direct access from derived classes
-    /** resolves future from await_suspend or resume_handle*/
-    static std::coroutine_handle<> resolve_resume(future<T> *what) {
-        return what->resolve_resume();
-    }
-
-    mutable std::atomic<future<T> *>_owner;
 };
 
 
@@ -925,6 +972,11 @@ void discard(Fn &&fn) {
     if (!w) x->resume();
 }
 
+
+template<typename T, typename ... Args>
+switch_to_awt switch_to(promise<T> &promise, Args &&...args) {
+    return switch_to_awt{promise.set_value_and_suspend(std::forward<Args>(args)...)};
+}
 
 
 

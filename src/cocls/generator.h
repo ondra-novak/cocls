@@ -68,10 +68,10 @@ public:
 
     ///contains coroutine promise
     class promise_type {
-        //contains awaiter of caller - which is resumed on co_yield    
+        //contains awaiter of caller - which is resumed on co_yield
         awaiter *_caller = {};
         //contains internal awaiter for synchronous access and future<> access
-        awaiter _internal;        
+        awaiter _internal;
         //contains arguments (optional)
         [[no_unique_address]] storage_Arg_ptr _arg = {};
         //contains pointer to return value - value set by co_yield
@@ -85,7 +85,7 @@ public:
         //contains promise if called and there is a future waiting for result
         promise<Ret> _awaiting;
 
-        //function is called when accessing synchronously 
+        //function is called when accessing synchronously
         /*
          * @param awt awaiter (not interested)
          * @param user_ptr - used to point to generator's promise type
@@ -102,7 +102,7 @@ public:
          * @param awt unused
            @param user_ptr - points to generator's promise type
            @param h - is set to coroutine handle to resume - returned during promise resolution
-         * 
+         *
          */
         static void resume_fn_future(awaiter *awt, void *user_ptr, std::coroutine_handle<> &h) noexcept {
             auto g = reinterpret_cast<promise_type *>(user_ptr);
@@ -115,9 +115,10 @@ public:
         }
 
         std::coroutine_handle<> unblock_future() {
-            if (done()) return _awaiting.drop_and_suspend();
-            else if (_exp) return _awaiting.set_value_and_suspend(_exp);
-            else return _awaiting.set_value_and_suspend(std::move(*_ret));            
+
+            if (done()) return switch_to(_awaiting, drop)._h;
+            else if (_exp) return switch_to(_awaiting,_exp)._h;
+            else return switch_to(_awaiting,std::move(*_ret))._h;
         }
 
     public:

@@ -2,6 +2,10 @@
 #ifndef SRC_COCLS_SELF_H_
 #define SRC_COCLS_SELF_H_
 
+#include "common.h"
+
+namespace cocls {
+
 ///Retrieves handle to currently running coroutine
 /**
  * @code
@@ -24,6 +28,7 @@ protected:
 };
 
 
+}
 
 
 #endif /* SRC_COCLS_SELF_H_ */
