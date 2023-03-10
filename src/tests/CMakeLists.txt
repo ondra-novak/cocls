@@ -38,5 +38,7 @@ add_executable (scheduler scheduler.cpp)
 add_executable (scheduler_single_thread scheduler_single_thread.cpp)
 add_executable (task  task.cpp)
 add_executable (thread_pool thread_pool.cpp)
+add_executable (coroutine1 coroutine1.cpp)
+add_executable (coroutine2 coroutine2.cpp)
 
 

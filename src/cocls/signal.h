@@ -56,7 +56,7 @@ public:
     ///rvalue reference of the value
     using rvalue_reference = std::add_rvalue_reference_t<T>;
     ///base type which contains value type with removed reference, or bool for void
-    using base_type = std::conditional_t<std::is_void_v<T>, bool ,std::remove_cvref<T> >;
+    using base_type = std::conditional_t<std::is_void_v<T>, bool ,std::remove_cvref_t<T> >;
 
     using rvalue_param = std::conditional_t<std::is_void_v<T>,bool &&,rvalue_reference>;
     using lvalue_param = std::conditional_t<std::is_void_v<T>,bool &,reference>;
