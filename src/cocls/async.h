@@ -63,6 +63,9 @@ public:
             return false;
         }
     }
+    bool start(cocls::promise<T> &&p) {
+        return start(p);
+    }
 
     ///Detach coroutine
     /**
@@ -104,7 +107,11 @@ public:
 
     ///starts coroutine and blocks current thread until result is awailable. Then result is returned
     auto join() {
-        return std::move(future<T>(*this).join());
+        if constexpr(std::is_void_v<T>) {
+            future<T>(*this).wait();
+        } else {
+            return std::move(future<T>(*this).join());
+        }
     }
 
 

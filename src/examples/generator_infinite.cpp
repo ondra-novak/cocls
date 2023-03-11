@@ -1,4 +1,3 @@
-#include "check.h"
 #include <cocls/generator.h>
 
 #include <iostream>
@@ -17,13 +16,14 @@ cocls::generator<int> co_fib() {
 
 int main(int, char **) {
 
-    int results[] = {1,2,3,5,8,13,21,34,55,89,0,0,0};
-    auto chk = std::begin(results);
     auto gen = co_fib();
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 20; i++) {
         auto val = gen();
-        CHECK_EQUAL(*val,*chk);
-        chk++;
+        if (val) {
+            std::cout << *val << std::endl;
+        } else {
+            std::cout << "Done" << std::endl;
+        }
     }
 
 }

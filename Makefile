@@ -19,6 +19,9 @@ clean:
 	@$(MAKE) --no-print-directory -C build/release clean
 install:
 	@$(MAKE) --no-print-directory -C build/release install
+test: all_release
+	@$(MAKE) --no-print-directory -C build/release test;
+	
 
 $(FORCE_BUILD_PROFILE):
 	echo $(FORCE_BUILD_PROFILE)
