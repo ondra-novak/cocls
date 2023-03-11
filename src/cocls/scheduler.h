@@ -249,9 +249,11 @@ public:
 
             if constexpr(std::is_void_v<AwtRetVal>) {
 
-                auto fn = [&](auto ... x){
-                    if constexpr(sizeof...(x) == 1) {
-                        e = std::exception_ptr(x...);
+                auto fn = [&](auto x){
+                    try {
+                        x.get();
+                    } catch (...) {
+                        e = std::current_exception();
                     }
                     stps.request_stop();
                 };
@@ -265,18 +267,21 @@ public:
             } else {
                 std::optional<AwtRetVal> ret;
 
-                callback_await<stack_storage,Awt &>(storage, awt, [&](auto x){
-                    if constexpr(std::is_same_v<decltype(x), std::exception_ptr>) {
-                        e = std::exception_ptr(x);
-                    } else {
-                        ret.emplace(std::move(x));
+                auto fn = [&](auto x){
+                    try {
+                        ret.emplace(std::move(*x));
+                    } catch (...) {
+                        e = std::current_exception();
                     }
                     stps.request_stop();
-                });
-                coro_queue::install_queue_and_resume([&]{
-                    worker.detach();
-                });
-                if (e) std::rethrow_exception(e);
+                };
+
+                callback_await<stack_storage,Awt &>(storage, fn, awt);
+
+                coro_queue::install_queue_and_call([&]{
+                     worker.detach();
+                 });
+                 if (e) std::rethrow_exception(e);
                 return *ret;
             }
         }

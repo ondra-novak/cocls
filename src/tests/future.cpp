@@ -13,7 +13,7 @@ cocls::future<int> work() {
     };
 }
 
-cocls::future<int> cofn1() {
+cocls::async<int> cofn1() {
     cocls::future<int> fut;
     fut << work;
     co_return co_await fut;

@@ -17,15 +17,12 @@ cocls::future<int> work() {
 
 cocls::future<int> cofn1() {
     cocls::future<int> fut([](auto promise) {
-        cocls::callback_await<cocls::future<int> >([promise = std::move(promise)](auto value) mutable {
-            if constexpr(cocls::is_exception(value)) {
-                try {std::rethrow_exception(value);} catch (std::exception &e) {
-                    std::cout << "Callback exception: " << e.what() << std::endl;
-                }
-            } else {
-                std::cout << "Callback result:" << value << std::endl;
+        cocls::callback_await<cocls::future<int> >([promise = std::move(promise)](cocls::await_result<int> value) mutable {
+            try {
+                std::cout << "Callback result:" << *value << std::endl;
+            } catch (...) {
+                promise(std::current_exception());
             }
-            promise(value);
         },[&]{return work();});
     });
 

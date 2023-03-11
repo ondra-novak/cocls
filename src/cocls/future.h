@@ -204,6 +204,11 @@ public:
         coro.start(p);
     }
 
+    future(async<T> &coro):_awaiter(&awaiter::instance) {
+        auto p = get_promise();
+        coro.start(p);
+    }
+
     ///Resolves future by a value
     template<typename ... Args>
     static future<T> set_value(Args && ... args) {
@@ -977,6 +982,7 @@ template<typename T, typename ... Args>
 switch_to_awt switch_to(promise<T> &promise, Args &&...args) {
     return switch_to_awt{promise.set_value_and_suspend(std::forward<Args>(args)...)};
 }
+
 
 
 

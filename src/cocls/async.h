@@ -9,12 +9,16 @@
 #define SRC_COCLS_ASYNC_H_
 
 #include "coro_queue.h"
+#include "awaiter.h"
 
+#include <cassert>
 namespace cocls {
 
 template<typename T> class future;
 template<typename T> class promise;
 template<typename T> class async_promise;
+
+
 
 template<typename T>
 class [[nodiscard]] async {
@@ -69,15 +73,50 @@ public:
         start_coro();
     }
 
+    ///Awaiter which allows to co_await the async<T> coroutine
+    class co_awaiter: private awaiter, private future<T> {
+    public:
+        co_awaiter(std::coroutine_handle<> h) {
+            this->set_handle(h);
+        }
+        bool await_ready() const noexcept {
+            return this->_awaiter.load(std::memory_order_relaxed) == &awaiter::disabled;
+        }
+        std::coroutine_handle<> await_suspend(std::coroutine_handle<> h) {
+            std::coroutine_handle<promise_type> start_handle = std::coroutine_handle<promise_type>::from_address(this->_handle_addr);
+            auto &p = start_handle.promise();
+            this->set_handle(h);
+            this->_awaiter.store(this, std::memory_order_relaxed);
+            p._future = this;
+            return start_handle;
+        }
+
+        typename future<T>::reference await_resume() {
+            return this->value();
+        }
+    };
+
+
+    ///starts async coroutine, and co_awaits for result
+    co_awaiter operator co_await() {
+        return co_awaiter(std::exchange(_h,{}));
+    }
+
+    ///starts coroutine and blocks current thread until result is awailable. Then result is returned
+    auto join() {
+        return std::move(future<T>(*this).join());
+    }
+
 
 protected:
     void start_coro() {
+        assert("There is no coroutine to start" && _h != nullptr);
         auto h = std::exchange(_h,{});
         coro_queue::resume(h);
     }
 
 
-protected:
+
     std::coroutine_handle<promise_type> _h;
 };
 

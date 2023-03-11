@@ -46,6 +46,23 @@ coro.detach(); //spuštění v detached režimu
 
 Jakmile je korutina spuštěna, proměnná `coro` může být zničena. Zničení nespuštěné korutiny je povolená operace s tím, že dojde k vyvolání destruktorů uložených parametrů
 
+### Spuštění korutiny použitím operátoru co_await
+
+Pokud připravenou korutinu použijeme jako výraz operátoru `co_await`, dojde ke spuštění korutiny za současného pozastavení aktuální korutiny. Jakmile korutina dokončí běh, je obnovena aktuální spící korutina a je vrácen výsledek volané korutiny,
+
+```
+int result = co_awat coroutine(... args....);
+```
+
+### Spuštění korutiny synchroně
+
+V normálním vlákně lze spustit korutinu a vyčkat na výsledek pomocí funkce `.join()`. Operace je blokující volání, aktuální vlákno je zablokováno dokud korutina nevrátí výsledek
+
+```
+int result = coroutine(... args....).join();
+```
+
+
 ### Spuštění korutiny - nastavení promisy výsledkem
 
 Korutinu `async<T>` lze svázat s existujícím objektem `promise<T>` (viz dále), pak se korutina spustí a po dokončení se výsledkem vyplní svázana promise.
@@ -84,28 +101,6 @@ async<int> coro = coroutine(... args...);
 future<int> f = coro.start();
 //...
 int result = f.wait();
-```
-
-Zkrácené zápisy
-
-```
-//asynchroně
-int result = co_await coroutine(... args...).start();
-```
-
-```
-//synchroně
-int result = coroutine(... args...).start().wait();
-```
-
-
-Místo volání funkce start(), lze korutinu spustit také konstrukcí future<T> přímo výsledkem korutiny
-
-```
-//korutina se spustí konstrukcí proměnné f,
-future<int> f = coroutine(... args...);
-
-int result = co_await f;
 ```
 
 ## Třídy future<T> a promise<T>
@@ -221,6 +216,8 @@ discard([&]{return coroutine_example();}
 Funkce `discard()` alokuje future<T> na haldě a v okamžiku nastavení hodnoty ji zničí. Tuto funkci použijte, pokud nemáte jinou možnost jak zahodit výsledek volání. Pokud je volání
 ve formě korutiny, pak je lepší použít async<T>::detach(), která též zahazuje výsledek korutiny a přitom nepotřebuje alokovat speciální místo na haldě.
 
+
+
 ### Objekt shared_future<T>
 
 ```
@@ -240,6 +237,45 @@ int result = co_await f;
 
 
 ```
+
+### Zavolání funkce/callbacku při nastavení future
+
+Místo aktivního čekání na future, lze požadovat, aby se při nastavení future zavolal callback, a jemu se předala hodnota.
+
+```
+#include <cocls/callback_awaiterr.h>
+```
+
+Stejně jako ve výše uvedených situacích budeme instanci `future<T>` konstruovat pomocí
+lambda funkce, která instanci vrací. K vytvoření callbacku použíjeme `callback_await`
+
+```
+callback_await<future<int> >([&](await_result<int> result){
+        if (result) {
+            process_result(*result);
+        } else {
+            handle_exception(std::current_exception());
+        }
+    },[&]{
+        return a_function_returning_future_int();
+    });
+```
+
+Funkce `callback_await` vyžaduje specifikovat typ awaitable nebo awaiteru v parametru šablony, zde `callback_await<future<int>` specifikuje, že chceme čekat na `future<int>`. Prvním parametrem funkce je samotný callback, který může být ve formě lambdy, nebo jiného invokable objektu. Tato funkce obdrží výsledek ve formě `await_result<T>`. Hodnotu lze získat přes funkci `get()`. Pokud awaitable nevrací výsledek (vrací void), je přesto nutné zavolat get(), která též nic nevrací, ale může být vyhozena výjimka. Je nutné dodat, že `await_result` funguje správně jen v kontextu aktuální funkce.
+
+Funkce `callback_await` musí callback alokovat na haldě. Proto existuje varianta, která
+přijímá alokátor. Allokátor je třeba specifikovat v šabloně
+
+```
+reusable_storage alloc;
+callback_await<reusable_storage, future<int> >([&](alloc, await_result<int> result) {...
+```
+
+Pozor na platnost allokátoru, měl by existovat po celou dobu dokud není callback zavolán.
+
+
+**TIP:** Funkce `callback_await` může být použita i pro jiné awaitable než pro future<T>.
+
 
 ### Dropnutí promise
 

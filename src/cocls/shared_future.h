@@ -121,6 +121,17 @@ public:
         _ptr->resolve_tracer.charge(_ptr);
     }
 
+    ///Construct shared future from future_coro
+    /**
+     * Starts coroutine and initializes shared_future. Result of coroutine is used to resolve
+     * the future
+     * @param coro coroutine result
+     */
+    shared_future(async<T> &coro)
+        :_ptr(std::make_shared<future_internal>(coro)) {
+        _ptr->resolve_tracer.charge(_ptr);
+    }
+
     ///Retrieve the future itself
     /** retrieved as reference, can't be copied */
     operator Base &() {return *_ptr;};
