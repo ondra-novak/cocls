@@ -258,7 +258,7 @@ public:
                     stps.request_stop();
                 };
 
-                callback_await<stack_storage,Awt &>(storage, fn, awt);
+                callback_await_alloc<stack_storage,Awt &>(storage, fn, awt);
 
                 coro_queue::install_queue_and_call([&]{
                     worker.detach();
@@ -276,7 +276,7 @@ public:
                     stps.request_stop();
                 };
 
-                callback_await<stack_storage,Awt &>(storage, fn, awt);
+                callback_await_alloc<stack_storage,Awt &>(storage, fn, awt);
 
                 coro_queue::install_queue_and_call([&]{
                      worker.detach();
@@ -406,11 +406,11 @@ protected:
                    }
                } else {
                    if constexpr(have_pool) {
-                       if (!pool->any_enqueued() && !coro_queue::can_block()) {
+                       if (!pool->any_enqueued() && coro_queue::can_block()) {
                            _cond.wait_until(lk, x);
                        }
                    } else {
-                       if (!coro_queue::can_block()) {
+                       if (coro_queue::can_block()) {
                            _cond.wait_until(lk, x);
                        }
                    }

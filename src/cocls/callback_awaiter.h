@@ -143,7 +143,7 @@ void callback_await(Fn &&fn, Args && ... args) {
  */
 template<typename Alloc, typename Awt, typename Fn, typename ... Args>
 CXX20_REQUIRES(std::invocable<Fn, await_result<std::decay_t<awaiter_return_value<Awt> > > >)
-void callback_await(Alloc &alloc, Fn fn, Args &&... args) {
+void callback_await_alloc(Alloc &alloc, Fn fn, Args &&... args) {
     _details::callback_await_coro<Alloc, Awt, Fn, Args...>(
         alloc, std::forward<Fn>(fn), std::forward<Args>(args)...).detach();
 
