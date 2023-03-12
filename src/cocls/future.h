@@ -321,7 +321,11 @@ public:
      */
     reference value() {
         switch (_state) {
-            default: throw value_not_ready_exception();
+            default:
+                if (pending())
+                    throw value_not_ready_exception();
+                else
+                    throw await_canceled_exception();
             case State::exception: std::rethrow_exception(_exception);throw;
             case State::value:
                 if constexpr(!is_void) return _value; else return ;

@@ -1,4 +1,4 @@
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test/)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests/)
 
 file(GLOB testFiles "*.cpp")
 foreach (testFile ${testFiles})
@@ -8,3 +8,4 @@ foreach (testFile ${testFiles})
     target_link_libraries(${executable_name} pthread )
     add_test(NAME ${executable_name} COMMAND ${executable_name})
 endforeach ()
+ 
