@@ -348,10 +348,10 @@ Pokud v aktuálním vlákně není připravena žádná korutina k běhu, pak fu
 
 ### Přepnutí do korutiny pomocí `suspend_point`
 
-Třída `suspend_point` je návratovou hodnotou některých funkcí. Jedná se o šablonu, která si nese v prvním parametru návratovou hodnotu a v druhém parametru pak většinou označení toho, kdo třídu implementuje. Každý vlastník může implementovat jinak dle potřeby 
+Třída `suspend_point` je návratovou hodnotou některých funkcí. Jedná se o šablonu, která si nese v prvním parametru návratovou hodnotu a v druhém parametru pak většinou označení toho, kdo třídu implementuje. Každý vlastník může implementovat jinak dle potřeby
 
 ```
-suspsend_point<bool, future<int> > result = promise(42);
+suspend_point<bool, future<int> > result = promise(42);
 ```
 
 Funkce nebo metody které vrací `suspend_point` označují místo, na kterém by bylo vhodné provést `co_await`. Výsledkem operace je pak hodnota typu, který je v prvním parametru.
@@ -360,7 +360,7 @@ Funkce nebo metody které vrací `suspend_point` označují místo, na kterém b
 bool val = co_await result;
 ```
 
-Rozdíl od `future<T>` nebo jiných awaiterů, použití `co_await` zde není povinné, a  k výsledku lze přistoupit přímo
+Rozdíl od `future<T>` nebo jiných awaiterů, použití `co_await` **zde není povinné**, a  k výsledku lze přistoupit přímo
 
 ```
 bool val = result
@@ -374,9 +374,9 @@ bool val = promise(42)
 
 Použití `co_await` však dává korutině možnost předat řízení korutině, která se provedenou operací se stala připravená ke spuštění. Například, pokud dojde k nastavení promise (zde `p`) na nějakou hodnotu, svázaná korutina čekající na tuto hodnotu je ihned připravená ke spuštění. V rámci *coro_mode* by se však zařadila do fronty připravených korutin a spustila by se až teprve až se současná korutina uspí. Navíc pokud je ve frontě více korutin, bude se postupovat popořadě. To se stane v případě, že `suspend_point` ignorujeme a vyzvedneme si výsledek přímo, nebo jej plně zahodíme. Použitím `co_await` na určeném `suspend_point` se současná korutina uspí a korutina připravená k běhu se probudí a může ihned reagovat na nový stav.
 
-Výsledek ve formě `suspend_point` nabídí 
+Výsledek ve formě `suspend_point` nabízí
 * `promise` při nastavování hodnoty, přičemž hodnotou je `bool`. **True** znamená, že korutina se spustila, **false** znamená, že promise již není svázána (pak k uspání nedošlo). Pokud `co_await`ujeme tento `suspend_point` pak se probudí korutina, která čekala na nastavenou hodnotu.
-* `mutex` a to ve funkci `release()` u pod-objektu `ownership`. To umožňuje uvolnit vlastnictví a ihned přepnout do korutiny, která je novým vlastníkem zámku. 
+* `mutex` a to ve funkci `release()` u pod-objektu `ownership`. To umožňuje uvolnit vlastnictví a ihned přepnout do korutiny, která je novým vlastníkem zámku.
 
 
 ## Awaiter
@@ -639,7 +639,7 @@ Narozdíl od standardního mutexu, zde se funkce `lock()` musí volat s `co_awai
 mutexu uvolní. Vlastnictví mutexu se sleduje objektem `ownership`. Tento objekt není kopírovatelný, pouze přesouvatelný. Jakmile je objekt opuštěn, nebo je zavolána funkce `.release()`, pak je zámek odemčen.
 
 Objekt `mutex` implementuje frontu čekajících korutin. Pokud některá korutina uvolní mutex,
-vlastnictví se automaticky přenese na první čekající korutinu. Vlastní obnovení korutiny se řídí podle pravidle vlákna ve stavu *coro mode*. Tedy obnovená korutina je umístěna do fronty k obnovení a je obnovena podle plánu jakmile se aktuální korutina dokončí nebo přeruší. Stále běžící korutina může tento proces urychlit použítím funkce `pause()`
+vlastnictví se automaticky přenese na první čekající korutinu. Vlastní obnovení korutiny se řídí podle pravidle vlákna ve stavu *coro mode*. Tedy obnovená korutina je umístěna do fronty k obnovení a je obnovena podle plánu jakmile se aktuální korutina dokončí nebo přeruší. Z toho důvodu funkce `.release()` vrací `suspend_point<void,mutex>`, pomocí něhož lze přes operátor co_await přepnout do korutiny, která je novým vlastníkem zámku.
 
 Uvolnění mutexu předčasně
 
@@ -669,10 +669,9 @@ async<void> do_something() {
     auto ownership = co_await mx.lock();
     //nyní vlastníme mutex mx
     co_await ...;
-    ownership.release();
-    //zámek se uvolní zničením objektu ownership
-    //uvolni vlákno novému vlastníkovi
-    co_await pause();
+    //uvolníme zámek a přepneme do nového vlastníka.
+    co_await ownership.release();
+    //kod pokračuje až na nás ve frontě výjde řada
     long_op();
     co_return;
 }

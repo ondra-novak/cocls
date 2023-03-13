@@ -313,8 +313,31 @@ inline void co_awaiter<promise_type>::sync() noexcept  {
     }
 }
 
-
-template<typename RetVal, typename Impl = void>
+///Suspend point - place where would be good idea to co_await result
+/**
+ * Result of this type is optionally co_awaited, which can
+ * bring some benefits. Typically by co_awaiting the
+ * result helps to associated coroutine to be executed earlier.
+ *
+ * You can "switch to" the associated coroutine.
+ *
+ * However you can also ignore return value or retrieve just
+ * actual result without co_awaiting, which performs
+ * default action, which is also pefromed in non-coroutine world
+ *
+ *
+ * @tparam RetVal return value - type of value wrapped into
+ * suspend point to be retrieved
+ * @tparam Impl class which implements this suspend_point. Each
+ * class can use different implementation and support different
+ * return values.
+ *
+ * This class is incomplette. Each implementation comes as
+ * specifalization.
+ *
+ *
+ */
+template<typename RetVal, typename Impl>
 class suspend_point;
 
 }

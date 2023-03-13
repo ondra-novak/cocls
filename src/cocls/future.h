@@ -603,6 +603,9 @@ protected:
 template<typename T>
 class promise {
 public:
+
+    using fut = future<T>;
+
     ///construct empty promise - to be assigned
     promise():_owner(nullptr) {}
     ///construct promise pointing at specific future
@@ -628,8 +631,7 @@ public:
         return *this;
     }
 
-    template<typename X>
-    using suspend_point = suspend_point<X, future<T> >;
+
 
     ///construct the associated future
     /**
@@ -641,7 +643,7 @@ public:
      * @note return value is awaitable (recommended to co_await result in coroutine)
      */
     template<typename ... Args>
-    suspend_point<bool> operator()(Args && ... args) {
+    suspend_point<bool, fut> operator()(Args && ... args) {
         return set_value(std::forward<Args>(args)...);
     }
 
@@ -655,27 +657,27 @@ public:
      * @note return value is awaitable (recommended to co_await result in coroutine)
      */
     template<typename ... Args>
-    suspend_point<bool> set_value(Args && ... args) {
+    suspend_point<bool, fut> set_value(Args && ... args) {
         auto m = claim();
         if (m) {
             m->set(std::forward<Args>(args)...);
         }
-        return suspend_point<bool>(m);
+        return suspend_point<bool, fut>(m);
     }
 
     ///Set value DropTag to drop promise manually
     /**
       * @note return value is awaitable (recommended to co_await result in coroutine)
       * */
-    suspend_point<bool> set_value(DropTag) {
-        return suspend_point<bool>(claim());
+    suspend_point<bool, fut> set_value(DropTag) {
+        return suspend_point<bool, fut>(claim());
     }
 
     ///Sets exception
     /**
       * @note return value is awaitable (recommended to co_await result in coroutine)
       * */
-    suspend_point<bool> set_exception(std::exception_ptr e) {
+    suspend_point<bool, fut> set_exception(std::exception_ptr e) {
         return set_value(e);
     }
 
@@ -742,8 +744,8 @@ protected:
         return what->resolve_resume();
     }
 
-    suspend_point<bool> drop() {
-        return suspend_point<bool>(claim());
+    suspend_point<bool, fut> drop() {
+        return suspend_point<bool, fut>(claim());
     }
 
 
