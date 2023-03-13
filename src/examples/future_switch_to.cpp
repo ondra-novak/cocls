@@ -7,7 +7,7 @@ cocls::async<void> cofn2(cocls:: promise<int> p) {
     std::cout << "Cofn2 running" << std::endl;
     cocls::pause();
     std::cout << "Switching to promise owner" << std::endl;
-    co_await cocls::switch_to(p, 42);
+    co_await p(42);
     std::cout << "Cofn2 is finishing" << std::endl;
 
 }

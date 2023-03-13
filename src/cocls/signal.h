@@ -36,7 +36,7 @@ class signal {
     using storage_type = std::conditional_t<std::is_void_v<T>, bool , T>;
 
     struct state { // @suppress("Miss copy constructor or assignment operator")
-        std::atomic<awaiter *> _chain;
+        awaiter_collector _chain;
         storage_type *_cur_val = nullptr;
 
         ~state() {

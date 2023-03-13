@@ -490,6 +490,7 @@ public:
 protected:
     friend class co_awaiter<future<T> >;
     friend class promise<T>;
+    friend class suspend_point<bool, future<T> >;
 
     template<typename A>
     friend class async_promise;
@@ -500,7 +501,7 @@ protected:
         std::exception_ptr _exception;
 
     };
-    mutable std::atomic<awaiter *> _awaiter = nullptr;
+    mutable awaiter_collector _awaiter = nullptr;
     State _state=State::not_value;
 
     //need for co_awaiter
@@ -551,6 +552,42 @@ protected:
     }
 };
 
+///implementation of suspend point for promise;
+template<typename T>
+class suspend_point<bool, future<T> > {
+    friend class promise<T>;
+    suspend_point(future<T> *to_resume) :_to_resume(to_resume) {}
+public:
+    suspend_point(const suspend_point &) = delete;
+    suspend_point &operator=(const suspend_point &) = delete;
+
+    bool await_ready() const noexcept {return !_to_resume;}
+    std::coroutine_handle<> await_suspend(std::coroutine_handle<> h)  noexcept {
+        _result =  _to_resume != nullptr;
+        coro_queue::resume(h);
+        auto f =std::exchange(_to_resume, nullptr);
+        return f->resolve_resume();
+    }
+    bool await_resume() const noexcept {
+        return _result;
+    }
+    std::coroutine_handle<> resume_handle() {
+        auto f =std::exchange(_to_resume, nullptr);
+        return f->resolve_resume();
+    }
+    ~suspend_point() {
+        if (_to_resume) _to_resume->resolve();
+    }
+
+    operator bool() const {
+        return _to_resume != nullptr;
+    }
+
+protected:
+    future<T> *_to_resume;
+    bool _result = false;
+
+};
 
 ///promise object - can be obtained by future<>::get_promise() or during construction of the future
 /**
@@ -591,22 +628,21 @@ public:
         return *this;
     }
 
+    template<typename X>
+    using suspend_point = suspend_point<X, future<T> >;
+
     ///construct the associated future
     /**
      * @param args arguments to construct the future's value - same as its constructor. For
      * promise<void> arguments are ignored
      * @retval true success (race won)
      * @retval false promise is already claimed (race lost)
+     *
+     * @note return value is awaitable (recommended to co_await result in coroutine)
      */
     template<typename ... Args>
-    bool operator()(Args && ... args) {
-        auto m = claim();
-        if (m) {
-            m->set(std::forward<Args>(args)...);
-            m->resolve();
-            return true;
-        }
-        return false;
+    suspend_point<bool> operator()(Args && ... args) {
+        return set_value(std::forward<Args>(args)...);
     }
 
     ///construct the associated future
@@ -615,25 +651,31 @@ public:
      * promise<void> arguments are ignored
      * @retval true success (race won)
      * @retval false promise is already claimed (race lost)
+     *
+     * @note return value is awaitable (recommended to co_await result in coroutine)
      */
     template<typename ... Args>
-    bool set_value(Args && ... args) {
+    suspend_point<bool> set_value(Args && ... args) {
         auto m = claim();
         if (m) {
             m->set(std::forward<Args>(args)...);
-            m->resolve();
-            return true;
         }
-        return false;
+        return suspend_point<bool>(m);
     }
 
     ///Set value DropTag to drop promise manually
-    bool set_value(DropTag) {
-        return drop();
+    /**
+      * @note return value is awaitable (recommended to co_await result in coroutine)
+      * */
+    suspend_point<bool> set_value(DropTag) {
+        return suspend_point<bool>(claim());
     }
 
     ///Sets exception
-    bool set_exception(std::exception_ptr e) {
+    /**
+      * @note return value is awaitable (recommended to co_await result in coroutine)
+      * */
+    suspend_point<bool> set_exception(std::exception_ptr e) {
         return set_value(e);
     }
 
@@ -673,35 +715,10 @@ public:
     template<typename ... Args>
     auto bind(Args &&... args) {
         return [p = std::move(*this),args = std::tuple<std::decay_t<Args>...>(std::forward<Args>(args)...)]() mutable {
-            std::apply(std::move(p),std::move(args));
+            return std::apply(std::move(p),std::move(args));
         };
     }
 
-
-    ///Set value to a promise and switch to the awaiting coroutine
-    /**
-     * The function must be called with co_await
-     *
-     * @code
-     * co_await switch_to(promise, val);
-     * @endcode
-     *
-     * Current coroutine is suspended, and associated coroutine (owner of the future) is
-     * immediately resumed with the value. Suspended coroutine is resumed later similar
-     * to how pause() works;
-     *
-     * @note if the owner of the future is not coroutine, resume() is called on
-     * awaiting object and then pause() is used to suspend the current coroutine
-     *
-     * @note if the owner of the future is current coroutine, the coroutine is not suspended
-     *
-     *
-     * @param promise promise to set
-     * @param args arguments passed to the constructor of the value
-     * @return awaiter which must be co_await. The awaited awaiter itself returns void
-     */
-    template<typename X, typename ... Args>
-    friend switch_to_awt switch_to(promise<X> &promise, Args &&...args);
 
 
 protected:
@@ -725,14 +742,8 @@ protected:
         return what->resolve_resume();
     }
 
-    bool drop() {
-        auto m = claim();
-        if (m) {
-            m->resolve();
-            return true;
-        } else {
-            return false;
-        }
+    suspend_point<bool> drop() {
+        return suspend_point<bool>(claim());
     }
 
 
@@ -979,12 +990,6 @@ void discard(Fn &&fn) {
     bool w;
     auto x = new Awt(std::forward<Fn>(fn), w);
     if (!w) x->resume();
-}
-
-
-template<typename T, typename ... Args>
-switch_to_awt switch_to(promise<T> &promise, Args &&...args) {
-    return switch_to_awt{promise.set_value_and_suspend(std::forward<Args>(args)...)};
 }
 
 

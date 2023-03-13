@@ -68,10 +68,12 @@ public:
 
     ///contains coroutine promise
     class promise_type {
+
+
         //contains awaiter of caller - which is resumed on co_yield
         awaiter *_caller = {};
         //contains internal awaiter for synchronous access and future<> access
-        awaiter _internal;
+        malleable_awaiter _internal;
         //contains arguments (optional)
         [[no_unique_address]] storage_Arg_ptr _arg = {};
         //contains pointer to return value - value set by co_yield
@@ -116,9 +118,9 @@ public:
 
         std::coroutine_handle<> unblock_future() {
 
-            if (done()) return switch_to(_awaiting, drop)._h;
-            else if (_exp) return switch_to(_awaiting,_exp)._h;
-            else return switch_to(_awaiting,std::move(*_ret))._h;
+            if (done()) return _awaiting(drop).resume_handle();
+            else if (_exp) return _awaiting(_exp).resume_handle();
+            else return _awaiting(std::move(*_ret)).resume_handle();
         }
 
     public:

@@ -218,7 +218,9 @@ public:
      */
     template<typename T, typename ... Args>
     void resolve(promise<T> &t, Args && ... args) {
-        if (t) run_detached(t.bind(std::forward<Args>(args)...));
+        if (t) run_detached([p = t.bind(std::forward<Args>(args)...)]() mutable{
+            p();
+        });
     }
 
 

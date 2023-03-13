@@ -2,7 +2,7 @@
 
 Knihovna COCLS poskytuje stavební třídy a funkce pro podporu generátorů, asynchornních operací, plánování a synchronizaci korutin.
 
-**POZNÁMKA:** Všechny symboly v této dokumentaci jsou uváděny bez namespace. 
+**POZNÁMKA:** Všechny symboly v této dokumentaci jsou uváděny bez namespace.
 
 ```
 using namespace cocls;
@@ -26,7 +26,7 @@ async<T> coroutine(Args ... args) {
 }
 ```
 
-**POZOR!** - korutina se zavoláním sama nespustí. Je potřeba ji spustit buď přímo, nebo pomocí dalších tříd - viz dále. 
+**POZOR!** - korutina se zavoláním sama nespustí. Je potřeba ji spustit buď přímo, nebo pomocí dalších tříd - viz dále.
 
 Zavoláním korutiny získáme objekt `async<T>`. Tento objekt lze přesouvat, ale nelze jej kopírovat. Zůstává platný dokud není korutina spuštěna - spuštěním korutiny je ekvivalentní operace jako přesun instance korutiny do interní částy knihovny.
 
@@ -81,7 +81,7 @@ V příkladu nahoře po této operace budou obě proměnné, jako `coro` tak `p`
 
 ### Spuštění korutiny - vrácení future<T>
 
-Korutinu `async<T>` lze spustit tak, že výsledkem je objekt `future<T>` (viz dále). Tento objekt lze použít k čekání na výsledek korutiny. 
+Korutinu `async<T>` lze spustit tak, že výsledkem je objekt `future<T>` (viz dále). Tento objekt lze použít k čekání na výsledek korutiny.
 
 ```
 future<T> async<T>::start();
@@ -109,7 +109,7 @@ int result = f.wait();
 #include <cocls/future.h>
 ```
 
-Tyto třídy jsou **základním synchronizačním nástrojem** pro komunikaci mezi korutinami a zbytkem kódu. 
+Tyto třídy jsou **základním synchronizačním nástrojem** pro komunikaci mezi korutinami a zbytkem kódu.
 
 * **future<T>** - představuje budoucí proměnnou daného typu. Hodnota je nastavena později. Na okamžik nastavení hodnoty lze čekat asynchronně pomocí `co_await` nebo synchroně pomocí metody `wait()` případně `sync()`. **POZOR!** Objekt **nelze ani kopírovat ani přesouvat**. Lze jej však vracet z funkce. Sdílený stav **není alokován na heapu**.
 
@@ -164,7 +164,7 @@ Třída future<T> nabízí zkratku pro psaní korutin. Funkce která vrací `fut
 ```
 future<int> coroutine_example() {
     co_await...; //
-    
+
     co_return
 }
 ```
@@ -180,7 +180,7 @@ future<int> coroutine_example(args) {
 }
 async<int> coroutine_example_coro(args) {
     co_await...; //
-    
+
     co_return...;
 }
 ```
@@ -318,7 +318,7 @@ Promise nemusí být jen použita k nastavení hodnoty, ale k nahlášení výji
 
 V rámci korutiny async<T> existuje evidence dvou stavů vlákna
 * **normální běh (normal mode)** - ve kterém jsou voláný funkce, ne však korutiny
-* **běh v korutině (coro mode)** - v tomto stavu je v zásobníku aktivní aspoň jeden rámec patřící korutině. 
+* **běh v korutině (coro mode)** - v tomto stavu je v zásobníku aktivní aspoň jeden rámec patřící korutině.
 
 **Poznámka** - režim je evidován jen v rámci objektů z knihovny `cocls`. Pokud dojde k aktivaci rámce patřící jiné knihovně, nemusí detekce tohoto rámce fungovat. Kdykoliv je spuštěna, nebo obnovena korutina v *normal mode*, přejde vlákno do stavu *coro mode* a tento stav opustí v okamžiku, kdy se tato korutina ukončí nebo přeruší.
 
@@ -346,17 +346,37 @@ co_await pause();
 
 Pokud v aktuálním vlákně není připravena žádná korutina k běhu, pak funkce nedělá nic. Již řazené korutiny se obnovuji v pořadí zařazení. Pokud víc korutin opakovaně používá tuto funkci, pak se exekuce střídá v pořadí jejich prvotního zařazení (fronta)
 
-### Ruční přepnutí do korutiny pomocí promise<T>
+### Přepnutí do korutiny pomocí `suspend_point`
 
-Třída promise<T> umožňuje obnovit korutinu, která čeká na výsledek future<T> k níž je svázaná promise.
+Třída `suspend_point` je návratovou hodnotou některých funkcí. Jedná se o šablonu, která si nese v prvním parametru návratovou hodnotu a v druhém parametru pak většinou označení toho, kdo třídu implementuje. Každý vlastník může implementovat jinak dle potřeby 
 
 ```
-promise<int> p = ....;
-
-co_await switch_to(p,value);
+suspsend_point<bool, future<int> > result = promise(42);
 ```
 
-Funkce switch_to musí být zavolána v korutině v příkazem `co_await`. V rámci operace nastaví danou promise, uspí aktuální korutinu a zařadí jí do fronty (jako pause()) a obnoví čekající korutinu, která si okamžitě může načíst hodnotu. Řízení je předáno pomocí symmetrického transferu. Pokud je obnovena korutina zase uspána nebo ukončena, je současná korutina obnovena v závislosti na stavu fronty.
+Funkce nebo metody které vrací `suspend_point` označují místo, na kterém by bylo vhodné provést `co_await`. Výsledkem operace je pak hodnota typu, který je v prvním parametru.
+
+```
+bool val = co_await result;
+```
+
+Rozdíl od `future<T>` nebo jiných awaiterů, použití `co_await` zde není povinné, a  k výsledku lze přistoupit přímo
+
+```
+bool val = result
+```
+
+nebo ve zkratce
+
+```
+bool val = promise(42)
+```
+
+Použití `co_await` však dává korutině možnost předat řízení korutině, která se provedenou operací se stala připravená ke spuštění. Například, pokud dojde k nastavení promise (zde `p`) na nějakou hodnotu, svázaná korutina čekající na tuto hodnotu je ihned připravená ke spuštění. V rámci *coro_mode* by se však zařadila do fronty připravených korutin a spustila by se až teprve až se současná korutina uspí. Navíc pokud je ve frontě více korutin, bude se postupovat popořadě. To se stane v případě, že `suspend_point` ignorujeme a vyzvedneme si výsledek přímo, nebo jej plně zahodíme. Použitím `co_await` na určeném `suspend_point` se současná korutina uspí a korutina připravená k běhu se probudí a může ihned reagovat na nový stav.
+
+Výsledek ve formě `suspend_point` nabídí 
+* `promise` při nastavování hodnoty, přičemž hodnotou je `bool`. **True** znamená, že korutina se spustila, **false** znamená, že promise již není svázána (pak k uspání nedošlo). Pokud `co_await`ujeme tento `suspend_point` pak se probudí korutina, která čekala na nastavenou hodnotu.
+* `mutex` a to ve funkci `release()` u pod-objektu `ownership`. To umožňuje uvolnit vlastnictví a ihned přepnout do korutiny, která je novým vlastníkem zámku. 
 
 
 ## Awaiter
@@ -556,7 +576,7 @@ V rámci korutiny je pak hodnota k dispozici přes
 int val = co_yield <expr>;
 ```
 
-#### Přístup k první hodnotě argumentu. 
+#### Přístup k první hodnotě argumentu.
 
 Při prvním zavolání generátoru s argumentem není zaslaná hodnota přímo k dispozici. Při zavolání `co_yield` se očekává již nějaký výsledek a pak by se načetla druhá zaslaná hodnota argumentu. Proto lze v tomto případě použít zápis `co_yield nullptr`;
 
@@ -580,7 +600,7 @@ void print_gen() {
 
 ### Generátor aggregator
 
-Víc generátorů lze agregovat do jednoho generátoru. Pokud se jedná o synchroní generátory, pak agregace způsobí, že jednotlivé generátory se budou střídat v generování další hodnoty. Pokud se jedná o asynchroní generátory, pak agregovaný generátor vždy vygeneruje hodnotu 
+Víc generátorů lze agregovat do jednoho generátoru. Pokud se jedná o synchroní generátory, pak agregace způsobí, že jednotlivé generátory se budou střídat v generování další hodnoty. Pokud se jedná o asynchroní generátory, pak agregovaný generátor vždy vygeneruje hodnotu
 toho generátoru, který jako první dokončil svůj generační proces. Další generátory se řadí do fronty,
 
 ```
@@ -652,7 +672,7 @@ async<void> do_something() {
     ownership.release();
     //zámek se uvolní zničením objektu ownership
     //uvolni vlákno novému vlastníkovi
-    co_await pause();    
+    co_await pause();
     long_op();
     co_return;
 }
@@ -676,7 +696,7 @@ Fronta umožňuje nechat korutiny reagovat na hodnoty vkládané do fronty
 * Pokud je fronta prázdná, pak operace pop() způsobí, že aktuální korutina je uspaná a je následně probuze první vloženou hodnotou
 * Pokud fronta není prázdné, pak operace pop() korutinu neuspí a je ihned vybrána první hodnota z fronty
 * Pokud je fronta limited_queue plná, pak korutina volající operaci  push() je uspána a je následně probuzena pokud někdo vyzvedne první hodnotu z fronty a uvolní v ní místo.
-* Na hodnoty ve froně může čekat víc korutin současně (multiple consumers). 
+* Na hodnoty ve froně může čekat víc korutin současně (multiple consumers).
 * Pushovat hodnot může vícero producerů, operace je MT bezpečná. (multiple producers)
 * V případě limited_queue<T> může vícero producerů čekat na uvolnění místa ve frontě při push()
 
@@ -707,11 +727,11 @@ void stop_reader(queue<int> &q) {
 **Pozor:** Pokud ve frontě nikdo nečeká, nebo je fronta plná neodebraných hodnot, k odblokaci
 nedojde
 
-Typické použití je k implementaci timeoutu. Koroutina, která čte si nainstaluje timer, který zavolá `unblock_pop`, pokud vyprší čas čekání na hodnotu ve frontě. Pakliže je hodnota získána, může být timer odinstalován. 
+Typické použití je k implementaci timeoutu. Koroutina, která čte si nainstaluje timer, který zavolá `unblock_pop`, pokud vyprší čas čekání na hodnotu ve frontě. Pakliže je hodnota získána, může být timer odinstalován.
 
 ## Signal
 
-Signal je objekt, který propojuje dvě části kódu, kdy jedna generuje signály v podobě hodnot (signal generator) a druhá je těm signálům naslouchá a reaguje na ně. Je to podobný pattern jako producer a consumer. 
+Signal je objekt, který propojuje dvě části kódu, kdy jedna generuje signály v podobě hodnot (signal generator) a druhá je těm signálům naslouchá a reaguje na ně. Je to podobný pattern jako producer a consumer.
 
 Rozdíl mezi frontou a signálem je v těsnější vazbě mezi vyprodukování hodnoty a její konzumace. Zatímco u fronty může producent generovat nové hodnoty nezávisle na tom, zda je konzumenti stíhají konzumovat, v tomto případě se provádí synchronizace, kdy producent je zastaven do doby, než je produkovaná hodnota z konzumována.
 
@@ -741,7 +761,7 @@ async<void> consumer(signal<int> &sig) {
     } catch (const await_canceled_exception &) {
         //done
     }
-}   
+}
 
 void generate(signal<int> &sig) {
     auto c = sig.get_collector();
@@ -760,7 +780,7 @@ async<void> consumer(signal_producer<int> &prod) {
     try {
         auto e = signal<int>::hook_up([&](auto collector) {
                 prod.subscribe(std::move(collector));
-            });            
+            });
         while(true) {
             int val = co_await e;
             print(val);
@@ -768,7 +788,7 @@ async<void> consumer(signal_producer<int> &prod) {
     } catch (const await_canceled_exception &) {
         //done
     }
-}   
+}
 
 ```
 ## Thread pool a plánovač
@@ -791,7 +811,7 @@ async<void> threaded(thread_pool &pool)  {
 }
 ```
 
-Každé vlákno automatick běží v *coro mode*. Každé vlákno tak má k dispozici frontu lokálně připravených korutin. 
+Každé vlákno automatick běží v *coro mode*. Každé vlákno tak má k dispozici frontu lokálně připravených korutin.
 
 Kromě toho, API thread_poolu nabízí následující metody
 
@@ -828,7 +848,7 @@ std::thread sch_thr;
 scheduler sch4(thr)
 ```
 
-Plánovač lze v korutině použít pomocí funkcí **sleep_for** a **sleep_until**. Tyto funkce lze volat přes `co_await`, protože výsledkem volání `future<void>`. 
+Plánovač lze v korutině použít pomocí funkcí **sleep_for** a **sleep_until**. Tyto funkce lze volat přes `co_await`, protože výsledkem volání `future<void>`.
 
 Součástí volání těchto dvou funkcí je i identifikátor typu `void *`. Tímto identifikátorem lze později naplánovanou operaci zrušit s tím, že patřičná future<void> vyhodí výjimku (kterou lze nastavit)
 
@@ -845,7 +865,7 @@ Funkce **interval** představuje generátor intervalu. Parametrem se zadává in
 
 ## Korutiny alokované pomocí alokátorů
 
-Běžné korutiny se alokují na heapu. Knihovna cocls však nabízí i možnost alokovat korutinu prostřednictvím alokátoru. Je to určeno pro zkušenější programátory, zato lze dosáhnout vyšší efektivitu při volání korutin. 
+Běžné korutiny se alokují na heapu. Knihovna cocls však nabízí i možnost alokovat korutinu prostřednictvím alokátoru. Je to určeno pro zkušenější programátory, zato lze dosáhnout vyšší efektivitu při volání korutin.
 
 ### Korutina podporující alokaci alokátorem
 
@@ -897,7 +917,7 @@ public:
     future<int> read_next() {
         return read_next_coro(_storage);
     }
-    
+
 protected:
     reusable_storage _storage;
 
@@ -948,7 +968,7 @@ storage = alloca(storage);
 async<int> coro = do_something(storage,...);
 ```
 
-Objekt `storage` není třeba dále držet, ale je třeba mít na paměti, že alokovaný prostor je rezervovaný jen do konce této funkce. Pokud byl alokovaný prostor příliš malý, pak se korutina alokuje na haldě, ale do sdíleného stavu se uloží požadovaná velikost frame. Při příštím použití stejného sdíleného stavu se bude na zásobníku alokovat prostor této velikosti. 
+Objekt `storage` není třeba dále držet, ale je třeba mít na paměti, že alokovaný prostor je rezervovaný jen do konce této funkce. Pokud byl alokovaný prostor příliš malý, pak se korutina alokuje na haldě, ale do sdíleného stavu se uloží požadovaná velikost frame. Při příštím použití stejného sdíleného stavu se bude na zásobníku alokovat prostor této velikosti.
 
-Výhoda tohoto alokátoru je že pokud se podaří rámec spočítat dostatečně velký, přeskočí se veškerá alokace a frame korutiny je umístěno do zásobníku. 
+Výhoda tohoto alokátoru je že pokud se podaří rámec spočítat dostatečně velký, přeskočí se veškerá alokace a frame korutiny je umístěno do zásobníku.
 

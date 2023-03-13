@@ -14,7 +14,18 @@
 
 namespace cocls {
 
+class awaiter;
 
+///collects awaiters ready to be notified
+/**
+ * the collector is single atomic pointer, which allows to implement
+ * lockfree stack. Every awaiter has member variable _next which points to
+ * next awaiter in the collector.
+ */
+using awaiter_collector = std::atomic<awaiter *>;
+
+
+///Helps to store coroutine handle to be resumed.
 class awaiter {
 public:
 
@@ -80,17 +91,7 @@ public:
         }
     }
 
-    void set_handle(std::coroutine_handle<> h) {
-        _resume_fn = nullptr;
-        _handle_addr = h.address();
-    }
-
-    void set_resume_fn(resume_fn fn, void *user_ptr = nullptr) {
-        _resume_fn = fn;
-        _handle_addr = user_ptr;
-    }
-
-    void subscribe(std::atomic<awaiter *> &chain) {
+    void subscribe(awaiter_collector &chain) {
         assert (this != chain.load(std::memory_order_relaxed));
         //release memory order because we need to other thread to see change of _next
         //this is last operation of this thread with awaiter
@@ -104,7 +105,7 @@ public:
      * @param skip awaiter to be skipped
      * @return count of released awaiters (including skipped)
      */
-    static std::size_t resume_chain(std::atomic<awaiter *> &chain, awaiter *skip) {
+    static std::size_t resume_chain(awaiter_collector &chain, awaiter *skip) {
         //acquire memory order, we need to see modifications made by other thread during registration
         //this is first operation of the thread of awaiters
         return resume_chain_lk(chain.exchange(nullptr, std::memory_order_acquire), skip);
@@ -120,7 +121,7 @@ public:
      * @note It marks chain disabled, so futher registration are rejected with false
      * @see subscribe_check_ready()
      */
-    static std::size_t resume_chain_set_ready(std::atomic<awaiter *> &chain, awaiter &ready_state, awaiter *skip) {
+    static std::size_t resume_chain_set_ready(awaiter_collector &chain, awaiter &ready_state, awaiter *skip) {
         //acquire memory order, we need to see modifications made by other thread during registration
         //this is first operation of the thread of awaiters
         return resume_chain_lk(chain.exchange(&ready_state, std::memory_order_acquire), skip);
@@ -144,7 +145,7 @@ public:
      * @retval true registered
      * @retval false registration unsuccessful, the object is already prepared
      */
-    bool subscribe_check_ready(std::atomic<awaiter *> &chain, awaiter &ready_state) {
+    bool subscribe_check_ready(awaiter_collector &chain, awaiter &ready_state) {
         assert(this->_next == nullptr);
         //release mode - because _next can change between tries
         while (!chain.compare_exchange_weak(_next, this, std::memory_order_release)) {
@@ -161,12 +162,32 @@ public:
 
     awaiter *_next = nullptr;
 
+    ///Non-null instance containing empty function
     static awaiter instance;
+    ///Non null instance serves as disabled awaiter slot;
     static awaiter disabled;
 
 protected:
+
+    void set_handle(std::coroutine_handle<> h) {
+        _resume_fn = nullptr;
+        _handle_addr = h.address();
+    }
+
+    void set_resume_fn(resume_fn fn, void *user_ptr = nullptr) {
+        _resume_fn = fn;
+        _handle_addr = user_ptr;
+    }
+
+
+
     void *_handle_addr = nullptr;
     resume_fn _resume_fn = &null_fn;
+    ///This value is set to true by resume() or resume_handle() when a coroutine handle is resumed
+    /**
+     * Because recursive resume is not possible,
+     */
+    bool _will_be_resumed = false;
 
     static void null_fn(awaiter *, void *, std::coroutine_handle<> &) noexcept {}
 
@@ -238,6 +259,19 @@ protected:
 
 };
 
+///Malleable awaiter is awaiter, which has functions set_resume_fn and set_handle set public
+/**
+ * This allows to change behavior of the awaiter in runtime without introduction
+ * of new subclasses
+ */
+class malleable_awaiter : public awaiter {
+public:
+    using awaiter::set_resume_fn;
+    using awaiter::set_handle;
+};
+
+
+
 class sync_awaiter: public awaiter {
 public:
     std::atomic<bool> flag = {false};
@@ -279,21 +313,9 @@ inline void co_awaiter<promise_type>::sync() noexcept  {
     }
 }
 
-struct [[nodiscard]] switch_to_awt: std::suspend_always {
-    switch_to_awt(std::coroutine_handle<> h):_h(h) {}
 
-    std::coroutine_handle<> _h;
-    std::coroutine_handle<> await_suspend(std::coroutine_handle<> h) {
-        if (h != _h) coro_queue::resume(h);
-        return _h;
-    }
-};
-
-
-switch_to_awt switch_to(std::coroutine_handle<> h) {
-    return h;
-}
-
+template<typename RetVal, typename Impl = void>
+class suspend_point;
 
 }
 #endif /* SRC_cocls_AWAITER_H_ */

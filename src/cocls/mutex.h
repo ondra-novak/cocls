@@ -53,6 +53,7 @@ protected:
 
 public:
 
+    friend class suspend_point<void, mutex>;
 
 
 
@@ -70,7 +71,6 @@ public:
     }
 
 
-    class release_awt;
 
     ///Contains ownership of the mutex
     /** By holding this object, you owns an ownership */
@@ -88,9 +88,7 @@ public:
          * immediately transfer to new owner. Current coroutine is suspended and
          * pushed to the resume queue (like pause())
          */
-        release_awt release() {
-            return release_awt(std::move(*this));
-        }
+        suspend_point<void, mutex> release();
 
         ///Returns true, if you still owns the mutex (not released)
         /**
@@ -107,7 +105,7 @@ public:
     protected:
         ownership(mutex *mx):_ptr(mx) {}
         friend class mutex;
-        friend class release_awt;
+        friend class suspend_point<void, mutex>;
         std::unique_ptr<mutex, ownership_deleter> _ptr;
     };
 
@@ -132,22 +130,6 @@ public:
     }
 
 
-    class release_awt: public std::suspend_always {
-    public:
-        release_awt(ownership &&own):_own(std::move(own)) {}
-        std::coroutine_handle<> await_suspend(std::coroutine_handle<> h) {
-            mutex *mx = _own._ptr.release();
-            if  (mx) {
-                mx->unlock([&](awaiter *awt) {
-                    coro_queue::resume(h);
-                    h = awt->resume_handle();
-                });
-            }
-            return h;
-        }
-    protected:
-        ownership _own;
-    };
 
 protected:
 
@@ -156,7 +138,7 @@ protected:
 
     //requests to lock
     /*this is linked list in stack order LIFO, with atomic append feature */
-    std::atomic<awaiter *> _requests = nullptr;
+    awaiter_collector _requests = nullptr;
     //queue of requests, contains awaiters ordered in order of incoming
     /*this is also LIFO, but reversed - because reading LIFO to LIFO results FIFO
      * The queue is accessed under lock. It is build by unlocking thread
@@ -256,6 +238,27 @@ protected:
 
 };
 
+template<>
+class suspend_point<void, mutex>: public std::suspend_always {
+public:
+    suspend_point(mutex::ownership &&own):_own(std::move(own)) {}
+    std::coroutine_handle<> await_suspend(std::coroutine_handle<> h) {
+        mutex *mx = _own._ptr.release();
+        if  (mx) {
+            mx->unlock([&](awaiter *awt) {
+                coro_queue::resume(h);
+                h = awt->resume_handle();
+            });
+        }
+        return h;
+    }
+protected:
+    mutex::ownership _own;
+};
+
+suspend_point<void, mutex> mutex::ownership::release() {
+    return suspend_point<void, mutex>(std::move(*this));
+}
 
 }
 
