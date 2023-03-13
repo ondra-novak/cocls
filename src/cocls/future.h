@@ -528,7 +528,7 @@ protected:
     }
 
     void resolve() {
-        awaiter::resume_chain_set_ready(_awaiter, awaiter::disabled, nullptr);
+        awaiter::resume_chain_set_ready(_awaiter, awaiter::disabled);
     }
     std::coroutine_handle<> resolve_resume() {
         auto n = std::noop_coroutine();

@@ -102,37 +102,35 @@ public:
     ///releases chain atomicaly
     /**
      * @param chain holds chain
-     * @param skip awaiter to be skipped
      * @return count of released awaiters (including skipped)
      */
-    static std::size_t resume_chain(awaiter_collector &chain, awaiter *skip) {
+    static std::size_t resume_chain(awaiter_collector &chain) {
         //acquire memory order, we need to see modifications made by other thread during registration
         //this is first operation of the thread of awaiters
-        return resume_chain_lk(chain.exchange(nullptr, std::memory_order_acquire), skip);
+        return resume_chain_lk(chain.exchange(nullptr, std::memory_order_acquire));
     }
 
     ///Resume chain and marks its ready
     /**
      * @param chain chain to resume
      * @param ready_state state in meaning ready
-     * @param skip awaiter to be skipped, can be nullptr
      * @return count of awaiters
      *
      * @note It marks chain disabled, so futher registration are rejected with false
      * @see subscribe_check_ready()
      */
-    static std::size_t resume_chain_set_ready(awaiter_collector &chain, awaiter &ready_state, awaiter *skip) {
+    static std::size_t resume_chain_set_ready(awaiter_collector &chain, awaiter &ready_state) {
         //acquire memory order, we need to see modifications made by other thread during registration
         //this is first operation of the thread of awaiters
-        return resume_chain_lk(chain.exchange(&ready_state, std::memory_order_acquire), skip);
+        return resume_chain_lk(chain.exchange(&ready_state, std::memory_order_acquire));
     }
-    static std::size_t resume_chain_lk(awaiter *chain, awaiter *skip) {
+    static std::size_t resume_chain_lk(awaiter *chain) {
         std::size_t n = 0;
         while (chain) {
             auto y = chain;
             chain = chain->_next;
             y->_next = nullptr;
-            if (y != skip) y->resume();
+            y->resume();
             n++;
         }
         return n;

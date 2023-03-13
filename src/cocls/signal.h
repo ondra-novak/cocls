@@ -39,9 +39,16 @@ class signal {
         awaiter_collector _chain;
         storage_type *_cur_val = nullptr;
 
+
+        void notify_awaiters() {
+            coro_queue::install_queue_and_call([&]{
+                awaiter::resume_chain(_chain);
+            });
+        }
+
         ~state() {
             _cur_val = nullptr;
-            emitter::resume_chain(_chain,nullptr);
+            notify_awaiters();
         }
 
     };
@@ -88,7 +95,7 @@ public:
         void operator()(Args && ... args) const {
             base_type v(std::forward<Args>(args)...);
             _state->_cur_val = &v;
-            awaiter::resume_chain(_state->_chain,nullptr);
+            _state->notify_awaiters();
         }
 
         ///wake up all awaiters and pass value as rvalue reference
@@ -102,7 +109,7 @@ public:
          */
         void operator()(rvalue_param val) const {
             _state->_cur_val = &val;
-            awaiter::resume_chain(_state->_chain,nullptr);
+            _state->notify_awaiters();
         }
 
         ///wake up all awaiters and pass value as lvalue reference
@@ -116,7 +123,7 @@ public:
          */
         void operator()(lvalue_param val) const {
             _state->_cur_val = &val;
-            awaiter::resume_chain(_state->_chain,nullptr);
+            _state->notify_awaiters();
         }
 
         ///you can convert collector to signal object
