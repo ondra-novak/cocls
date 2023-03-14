@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.1)
 
-link_libraries(pthread)
+link_libraries($(STANDARD_LIBRARIES))
 
 add_executable (signal signal.cpp)
 add_executable (blocking_limited_queue blocking_limited_queue.cpp)

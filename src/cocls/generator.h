@@ -93,7 +93,7 @@ public:
          * @param user_ptr - used to point to generator's promise type
          * @param h - unused in sync mode
          */
-        static void resume_fn_sync(awaiter *awt, void *user_ptr, std::coroutine_handle<> &h) noexcept {
+        static void resume_fn_sync(awaiter *, void *user_ptr, std::coroutine_handle<> &) noexcept {
             auto g = reinterpret_cast<promise_type *>(user_ptr);
             g->unblock_sync();
         }
@@ -106,7 +106,7 @@ public:
            @param h - is set to coroutine handle to resume - returned during promise resolution
          *
          */
-        static void resume_fn_future(awaiter *awt, void *user_ptr, std::coroutine_handle<> &h) noexcept {
+        static void resume_fn_future(awaiter *, void *user_ptr, std::coroutine_handle<> &h) noexcept {
             auto g = reinterpret_cast<promise_type *>(user_ptr);
             h = g->unblock_future();
         }

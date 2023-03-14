@@ -66,7 +66,7 @@ namespace _details {
 
 
 template<typename Alloc, typename Awt, typename Fn, typename ... Args>
-async<void> callback_await_coro(Alloc &, Fn fn, Args ... args) noexcept {
+with_allocator<Alloc,async<void> > callback_await_coro(Alloc &, Fn fn, Args ... args) noexcept {
     using RetVal = std::decay_t<awaiter_return_value<Awt> >;
     Awt awt(std::forward<Args>(args)...);
     try {

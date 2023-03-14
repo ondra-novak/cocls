@@ -10,7 +10,7 @@ cocls::async<void> queue_task(cocls::queue<void> &q) {
             co_await q.pop();
             std::cout<<"Received event from queue(void) " << std::endl;
         }
-    } catch (const cocls::await_canceled_exception &e) {
+    } catch (const cocls::await_canceled_exception &) {
         std::cout<<"Queue destroyed " << std::endl;
     }
  }

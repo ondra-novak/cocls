@@ -151,7 +151,7 @@ public:
                 _next = nullptr;
                 //empty load, but enforce memory order acquire because this thread will
                 //access to result
-                chain.load(std::memory_order_acquire);
+                std::atomic_thread_fence(std::memory_order_acquire);
                 return false;
             }
         }

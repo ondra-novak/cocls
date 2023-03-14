@@ -326,10 +326,14 @@ public:
                     throw value_not_ready_exception();
                 else
                     throw await_canceled_exception();
-            case State::exception: std::rethrow_exception(_exception);throw;
+            case State::exception: 
+                std::rethrow_exception(_exception);
+                break;
             case State::value:
-                if constexpr(!is_void) return _value; else return ;
-        }
+                break;
+        }        
+        if constexpr(!is_void) return _value; else return ;
+
     }
 
     ///retrieves result value (as reference)
@@ -558,6 +562,7 @@ class suspend_point<bool, future<T> > {
     friend class promise<T>;
     suspend_point(future<T> *to_resume) :_to_resume(to_resume) {}
 public:
+    suspend_point()=default;
     suspend_point(const suspend_point &) = delete;
     suspend_point &operator=(const suspend_point &) = delete;
 
@@ -584,7 +589,7 @@ public:
     }
 
 protected:
-    future<T> *_to_resume;
+    future<T> *_to_resume = nullptr;
     bool _result = false;
 
 };
@@ -989,7 +994,7 @@ void discard(Fn &&fn) {
         fut_type _fut;
     };
 
-    bool w;
+    bool w = false;
     auto x = new Awt(std::forward<Fn>(fn), w);
     if (!w) x->resume();
 }

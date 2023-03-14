@@ -38,12 +38,11 @@ struct is_function_t<function<T, sz> > {static constexpr bool value = true;};
 template<typename T>
 inline constexpr bool is_function = is_function_t<T>::value;
 
+
 template< std::size_t small_space, bool e, typename Ret, typename ... Args>
-class function<Ret(Args...) noexcept(e), small_space> {
+class function_base {
 public:
 
-    ///type of function
-    using T = Ret(Args...) noexcept(e);
 
     ///call operation
     template<typename ... A>
@@ -53,7 +52,7 @@ public:
     }
 
     ///construct function without the target
-    function()=default;
+    function_base()=default;
 
     ///construct function with the target
     /**
@@ -68,7 +67,7 @@ public:
      */
     template<typename Fn>
     CXX20_REQUIRES(std::invocable<Fn, Args...> && (!is_function<Fn>))
-    function(Fn &&fn) {
+    function_base(Fn &&fn) {
         init(std::forward<Fn>(fn));
     }
 
@@ -80,7 +79,7 @@ public:
      * allocated on heap
      */
     template<std::size_t sz>
-    function(function<T, sz> &&other) {
+    function_base(function_base<sz,e,Ret,Args...> &&other) {
         if (other._ptr) {
             _ptr = other._ptr->move(space, small_space);
             other._ptr = nullptr;
@@ -88,18 +87,18 @@ public:
     }
 
     ///copy is deleted
-    function(const function &) = delete;
+    function_base(const function_base &) = delete;
 
     ///move the target
-    function(function &other):_ptr(other._ptr?other._ptr->move(space, small_space):nullptr) {
+    function_base(function_base &other):_ptr(other._ptr?other._ptr->move(space, small_space):nullptr) {
         other._ptr = nullptr;
     }
 
     ///assign is deleted
-    function &operator=(const function &) = delete;
+    function_base &operator=(const function_base &) = delete;
 
     ///assign by moving, which also destroyes original target
-    function &operator=(function &&other) {
+    function_base &operator=(function_base &&other) {
         if (&other != this) {
             delete _ptr;
             _ptr = other._ptr?other._ptr->move(space, small_space):nullptr;
@@ -117,7 +116,7 @@ public:
     bool operator==(std::nullptr_t) {return _ptr ==nullptr;}
 
     ///destroys any held target
-    ~function() {
+    ~function_base() {
         delete _ptr;
     }
 
@@ -138,7 +137,7 @@ protected:
         virtual Ret call(std::add_lvalue_reference_t<Args> ... args) noexcept(e) {
             return _fn(std::forward<Args>(args)...);
         }
-        virtual Abstract *move(void *newplace, std::size_t sz) {return this;}
+        virtual Abstract *move(void *, std::size_t ) {return this;}
     protected:
         Fn _fn;
     };
@@ -158,7 +157,7 @@ protected:
             return out;
         }
         void *operator new(std::size_t, void *p) {return p;}
-        void operator delete (void *, void *p) {}
+        void operator delete (void *, void *) {}
         void operator delete (void *, std::size_t) {}
     };
 
@@ -173,9 +172,43 @@ protected:
 
     Abstract *_ptr = nullptr;
     char space[small_space];
+};
 
+template< std::size_t small_space,  typename Ret, typename ... Args>
+class function<Ret(Args...), small_space>: public function_base<small_space,false,Ret,Args...> {
+public:
+    using function_base<small_space,false,Ret,Args...>::function_base;
+
+    ///construct function object from other object with different internal storage
+    /**
+     * @param other source object
+     *
+     * function is moved. If the function doesn't fit to new storage, it is
+     * allocated on heap
+     */
+    template<std::size_t sz>
+    function(function<Ret(Args...), sz> &&other):function_base<small_space,false,Ret,Args...>(std::move(other)) {}
 
 };
+
+template< std::size_t small_space,  typename Ret, typename ... Args>
+class function<Ret(Args...) noexcept, small_space>: public function_base<small_space,true,Ret,Args...> {
+public:
+    using function_base<small_space,true,Ret,Args...>::function_base;
+
+    ///construct function object from other object with different internal storage
+    /**
+     * @param other source object
+     *
+     * function is moved. If the function doesn't fit to new storage, it is
+     * allocated on heap
+     */
+    template<std::size_t sz>
+    function(function<Ret(Args...) noexcept, sz> &&other):function_base<small_space,false,Ret,Args...>(std::move(other)) {}
+
+};
+
+    
 
 }
 

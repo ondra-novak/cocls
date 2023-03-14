@@ -60,7 +60,7 @@ class shared_future {
 
     class future_internal: public Base {
     public:
-        using future<T>::future;
+        using Base::Base;
 
 
 
