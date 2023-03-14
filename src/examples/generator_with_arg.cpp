@@ -25,7 +25,7 @@ cocls::future<double> coro_example() {
     auto sum = summary();
     double data[] = {1,4,32,31.3,58.3,0.2, 16.3, 0.8, 7.7,4,8.5};
     for (double x: data) {
-        const RetVal &state = co_await sum(x);
+        RetVal state = co_await sum(x);
         std::cout << "Value=" << x <<", Sum=" << state.sum << ",  Count=" << state.count << ", Avg=" << state.sum/state.count << std::endl;
     }
     RetVal &st = sum.value();
@@ -37,7 +37,7 @@ double sync_example() {
     auto sum = summary();
     double data[] = {1,4,32,31.3,58.3,0.2, 16.3, 0.8, 7.7,4,8.5};
     for (double x: data) {
-        const RetVal &state = *sum(x);
+        RetVal state = *sum(x);
         std::cout << "Value=" << x <<", Sum=" << state.sum << ",  Count=" << state.count << ", Avg=" << state.sum/state.count << std::endl;
     }
     RetVal &st = sum.value();

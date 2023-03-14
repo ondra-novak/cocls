@@ -416,7 +416,7 @@ protected:
         while (!_scheduled.empty() && (_scheduled[0]._tp <= now || !_scheduled[0]._p)) {
             auto p = std::move(_scheduled[0]._p);
             pop_item();
-            if (p) return std::move(p);
+            if (p) return p;
         }
         if (_scheduled.empty()) return std::chrono::system_clock::time_point::max();
         else return _scheduled[0]._tp;

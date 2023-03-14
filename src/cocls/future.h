@@ -332,7 +332,7 @@ public:
             case State::value:
                 break;
         }        
-        if constexpr(!is_void) return _value; else return ;
+        if constexpr(!is_void) return _value;
 
     }
 
@@ -424,22 +424,15 @@ public:
 
 
     ///has_value() awaiter return by function has_value()
-    class [[nodiscard]] has_value_awt: public co_awaiter<future<T> > {
+    class [[nodiscard]] awaitable_bool: public co_awaiter<future<T> > {
     public:
         using co_awaiter<future<T> >::co_awaiter;
 
         bool await_ready() noexcept {return this->_owner.ready();}
         bool await_resume() noexcept {return this->_owner._state != State::not_value;}
-        bool await_suspend(std::coroutine_handle<> h) {
-            this->set_handle(h);
-            return this->_owner.subscribe_awaiter(this);
-        }
         operator bool() const {
             if (!this->_owner.ready()) this->_owner.sync();
             return this->_owner._state != State::not_value;
-        }
-        bool operator!() const {
-            return !operator bool();
         }
     };
 
@@ -454,8 +447,8 @@ public:
      * @note function is awaitable. You can co_await has_value() which suspend
      * the coroutine until the value is ready
      */
-    has_value_awt has_value() const {
-        return has_value_awt(*const_cast<future<T> *>(this));
+    awaitable_bool has_value() const {
+        return awaitable_bool(*const_cast<future<T> *>(this));
     }
 
     ///Asks whether the future has value
@@ -487,9 +480,6 @@ public:
     reference operator *() {
         return wait();
     }
-
-
-
 
 protected:
     friend class co_awaiter<future<T> >;

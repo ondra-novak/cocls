@@ -812,6 +812,26 @@ async<void> threaded(thread_pool &pool)  {
 
 Každé vlákno automatick běží v *coro mode*. Každé vlákno tak má k dispozici frontu lokálně připravených korutin.
 
+Korutina také může svázat své probuzení s thread poolem, a to pomocí modifikátoru pro co_await, viz dále.
+
+```
+async<void> threaded(thread_pool &pool)  {
+    auto result = co_await pool(calc_somethin_async());
+    //running in thread pool
+}
+```
+
+Výše zmíněný zápis způsobí, že v případě, že korutina musí čekat na výsledek funkce, tak její probuzení je zařízeno přes thread_pool. Je to podobné zápisu:
+
+```
+auto ret = co_await calc_somethin_async();
+co_await pool
+```
+
+Rozdíl je pouze v tom, že v případě, že na operaci není třeba čekat, k alokací vlákna nedojde a kód pokračuje bez přerušení. 
+
+
+
 Kromě toho, API thread_poolu nabízí následující metody
 
 * **run(...)** - spustí funkci nebo async<> korutinu ve vlákně. Vrací future<T> výsledku (i pro void)
@@ -970,4 +990,31 @@ async<int> coro = do_something(storage,...);
 Objekt `storage` není třeba dále držet, ale je třeba mít na paměti, že alokovaný prostor je rezervovaný jen do konce této funkce. Pokud byl alokovaný prostor příliš malý, pak se korutina alokuje na haldě, ale do sdíleného stavu se uloží požadovaná velikost frame. Při příštím použití stejného sdíleného stavu se bude na zásobníku alokovat prostor této velikosti.
 
 Výhoda tohoto alokátoru je že pokud se podaří rámec spočítat dostatečně velký, přeskočí se veškerá alokace a frame korutiny je umístěno do zásobníku.
+
+## Řízení průběhu obnovy korutiny
+
+V okamžiku, kdy je asynchroní operace dokončena, na kterou čeká korutina, je čekající korutina probuzena a pokračuje z místa svého uspání. Pokud je však vlákno v režimu *coro mode*, pak se korutina probudí až v okamžiku, kdy současná korutina je uspána nebo ukončena. Toto výchozí chvání lze předefinovat pomocí modifikátorů `co_await`. Ty definují *resumption_policy* tedy "politiku probouzení".
+
+### Probuzení v thread poolu
+
+```
+cocls::thread_pool pool;
+co_await pool(...);
+```
+
+### Vytvoření vlákna při probuzení
+
+Bez thread poolu lze při probuzení vynutit vytvoření detachovaného vláknal. 
+
+```
+co_await cocls::parallel(...);
+```
+
+### Prioritní probuzení
+
+Korutina si může vynutit prioritní probuzení v aktuálním vláknu bez ohledu na stav vlákna. Aktuální vlákno je přerušeno a pokračuje až když korutina skončí nebo je přerušena. Toto vynucení alokuje extra frame v zásobníku. Opakované vynucování prioritního probuzení může významně zaplnit zásobní. 
+
+```
+co_await cocls::immediately(...);
+```
 

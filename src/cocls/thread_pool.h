@@ -10,6 +10,7 @@
 #include "common.h"
 #include "future.h"
 #include "exceptions.h"
+#include "generics.h"
 
 #include "function.h"
 
@@ -153,6 +154,54 @@ public:
         thread_pool *_owner = nullptr;
         std::coroutine_handle<> _h;
     };
+
+    template<typename Awt>
+    class enqueue_awaiter: public awaiter {
+    public:
+        enqueue_awaiter(Awt &&awt, thread_pool &pool):_awt(std::forward<Awt>(awt)),_pool(pool) {}
+        constexpr bool await_ready() {return _awt.await_ready();}
+        constexpr auto await_suspend(std::coroutine_handle<> h) {
+            set_handle(h);
+            return _awt.await_suspend(&perform_resume, this);
+        }
+        constexpr decltype(auto) await_resume() {return _awt.await_resume();}
+    protected:
+
+        static void perform_resume(awaiter *, void *user_ptr, std::coroutine_handle<> &) noexcept {
+            enqueue_awaiter *_this = reinterpret_cast<enqueue_awaiter *>(user_ptr);
+            _this->_pool.run_detached([_this]{
+                _this->resume();
+            });
+        }
+        Awt _awt;
+        thread_pool &_pool;
+    };
+
+
+    /// converts awaitable/awaiter to resume awaiting coroutine in thread pool  
+    /**
+     * Example to use this operator
+     * @code
+     * //normal usage
+     * int ret = co_await calc_async();
+     * 
+     * //thread pool
+     * thread_pool pool;
+     * int ret2 = co_await pool(calc_async());
+     * @endcode
+     * 
+     * Operator converts awaitable to awaiter which is able to resume coroutine with allocating a thread in the thread
+     * pool. So coroutine will not block the thread which caused resumption and also is resumed immediately, and it
+     * is not put to coroutine queue (instead it is put to thread_pool queue)
+     * 
+     * If the awaiting operation is already resolved, no thread is allocated and execution continues in current thread
+     * 
+    */
+    template<typename Awaitable>
+    auto operator()(Awaitable &&awt) -> enqueue_awaiter<decltype(retrieve_awaiter(std::declval<Awaitable>()))> {
+        using AWT = decltype(retrieve_awaiter(std::forward<Awaitable>(awt)));
+        return enqueue_awaiter<AWT>(std::forward<Awaitable>(awt), *this);
+    }
 
 
     ///Transfer coroutine to the thread pool

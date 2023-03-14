@@ -43,7 +43,7 @@ int main() {
     col1(42);
     col2("Wide");
     col2("not seen");
-   // col1(50);
+    col1(50);
 
     f1.join();
     f2.join();

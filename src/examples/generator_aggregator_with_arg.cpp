@@ -28,7 +28,7 @@ cocls::future<void> coro_example() {
     auto sum = cocls::generator_aggregator(std::move(gens));
     double data[] = {1,4,32,31.3,58.3,0.2, 16.3, 0.8, 7.7,4,8.5};
     for (double x: data) {
-        const RetVal &state = co_await sum(x);
+        RetVal state = co_await sum(x);
         std::cout << "Value=" << x <<", Id=" << state.id << ", Sum=" << state.sum << ",  Count=" << state.count << ", Avg=" << state.sum/state.count << std::endl;
     }
 }
@@ -41,7 +41,7 @@ void sync_example() {
     auto sum = cocls::generator_aggregator(std::move(gens));
     double data[] = {1,4,32,31.3,58.3,0.2, 16.3, 0.8, 7.7,4,8.5};
     for (double x: data) {
-        const RetVal &state = sum(x).wait();
+        RetVal state = sum(x).wait();
         std::cout << "Value=" << x <<", Sum=" << state.sum << ",  Count=" << state.count << ", Avg=" << state.sum/state.count << std::endl;
     }
 }
