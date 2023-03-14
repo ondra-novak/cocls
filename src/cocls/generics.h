@@ -41,9 +41,13 @@ template<typename Awt>
 class awaiter_wrapper {
 public:
     awaiter_wrapper (Awt &owner):_owner(owner) {}
+
     constexpr bool await_ready() {return _owner.await_ready();}
-    constexpr auto await_suspend(std::coroutine_handle<> h) {return _owner.await_suspend(h);}
+
     constexpr decltype(auto) await_resume() {return _owner.await_resume();}
+
+    template<typename ... Args>
+    constexpr auto await_suspend(Args && ... h) {return _owner.await_suspend(std::forward<Args>(h)...);}
 protected:
     Awt &_owner;
 };

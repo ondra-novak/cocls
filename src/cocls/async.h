@@ -155,6 +155,37 @@ public:
         return std::coroutine_handle<async_promise>::from_promise(*this);
     }
     struct final_awaiter: std::suspend_always {
+
+#ifdef _MSC_VER     
+
+        //BUG: Microsoft VC++ cannot properly work with final awaiter in symmetric transfer mode
+        //because the return value is initialized inside of coroutine handle
+        //which is being destroyed
+        //which causes write-after-free
+        //
+        //To workaround this, we are using basic version of await_suspend()
+        //
+        //function returns false, which handles destruction by the standard library
+        //and awaiting coroutine is resumed through the coro_queue
+
+        template<typename Prom>
+        bool await_suspend(std::coroutine_handle<Prom> me) noexcept {
+            //store noop coroutine handle for later usage
+            std::coroutine_handle<> n = std::noop_coroutine();
+            //retrieve promise object
+            async_promise &p = me.promise();
+            //retrieve future ponter, it can be nullptr for detached coroutine
+            future<T> *f = p._future;
+            ///if future is defined
+            if (f) {
+                ///resolve it normally
+                f->resolve();    
+            }
+            ///return false, coroutine will be destroyed
+            return false;
+        }
+
+#else
         template<typename Prom>
         std::coroutine_handle<> await_suspend(std::coroutine_handle<Prom> me) noexcept {
             //store noop coroutine handle for later usage
@@ -172,7 +203,9 @@ public:
             //return handle returned by resolve();
             return h;
         }
+#endif
     };
+
 
     std::suspend_always initial_suspend() noexcept {return {};}
     final_awaiter final_suspend() noexcept {return {};}

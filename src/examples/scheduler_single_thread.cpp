@@ -27,9 +27,17 @@ int main(int, char **) {
     auto task = test_co(sch);
     ///run scheduler until task finishes
     sch.start(task);
+    
+    ///run again to test stack_allocator whether it adatpted
+    sch.start(test_co(sch));
 
-    auto task2 = test_co2(sch);
-    int ret = sch.start(task2);
+    ///try with return value
+    int ret = sch.start(test_co2(sch));
     std::cout << "Scheduler return result of coroutine: " << ret << std::endl;
+
+    ///try with return value (again)
+    ret = sch.start(test_co2(sch));
+    std::cout << "Scheduler return result of coroutine: " << ret << std::endl;
+
 
 }

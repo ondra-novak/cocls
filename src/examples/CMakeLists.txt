@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.1)
 
-link_libraries(pthread)
+link_libraries(${STANDARD_LIBRARIES})
 
 add_executable (signal signal.cpp)
 add_executable (blocking_limited_queue blocking_limited_queue.cpp)
@@ -40,5 +40,7 @@ add_executable (task  task.cpp)
 add_executable (thread_pool thread_pool.cpp)
 add_executable (coroutine1 coroutine1.cpp)
 add_executable (coroutine2 coroutine2.cpp)
+add_executable (resume_in_thread_pool resume_in_thread_pool.cpp)
+add_executable (resume_in_parallel resume_in_parallel.cpp)
 
 

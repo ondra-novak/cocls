@@ -22,7 +22,9 @@ int main(int, char **) {
     int id;
     auto t = cancelable(sch, &id);
     std::cin.get();
-    sch.cancel(&id);
+    if (!sch.cancel(&id)) {
+        std::cout << "Cancel failed - probably finished" << std::endl;
+    }
     t.join();
     return 0;
 }

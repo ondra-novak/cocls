@@ -84,7 +84,7 @@ public:
     static void *alloc(std::size_t sz) {
         return ::operator new(sz);
     }
-    static void dealloc(void *ptr, std::size_t sz) {
+    static void dealloc(void *ptr, std::size_t ) {
         return ::operator delete(ptr);
     }
 };

@@ -6,7 +6,6 @@
 
 #include "coro_queue.h"
 
-
 #include <algorithm>
 #include <atomic>
 #include <cassert>
@@ -151,7 +150,7 @@ public:
                 _next = nullptr;
                 //empty load, but enforce memory order acquire because this thread will
                 //access to result
-                chain.load(std::memory_order_acquire);
+                std::atomic_thread_fence(std::memory_order_acquire);
                 return false;
             }
         }
@@ -214,6 +213,11 @@ public:
         set_handle(h);
         return this->_owner.subscribe_awaiter(this);
     }
+    ///suspend coroutine but register function to be resumed instead of coroutine itself
+    bool await_suspend(resume_fn fn, void *user_ctx) {
+        set_resume_fn(fn,user_ctx);
+        return this->_owner.subscribe_awaiter(this);
+    }
     ///co_await related function
     decltype(auto) await_resume(){
         return this->_owner.value();
@@ -253,8 +257,6 @@ public:
 
 protected:
     promise_type &_owner;
-
-
 };
 
 ///Malleable awaiter is awaiter, which has functions set_resume_fn and set_handle set public
@@ -267,7 +269,6 @@ public:
     using awaiter::set_resume_fn;
     using awaiter::set_handle;
 };
-
 
 
 class sync_awaiter: public awaiter {
@@ -337,6 +338,7 @@ inline void co_awaiter<promise_type>::sync() noexcept  {
  */
 template<typename RetVal, typename Impl>
 class suspend_point;
+
 
 }
 #endif /* SRC_cocls_AWAITER_H_ */

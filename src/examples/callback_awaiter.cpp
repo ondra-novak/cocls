@@ -20,6 +20,7 @@ cocls::future<int> cofn1() {
         cocls::callback_await<cocls::future<int> >([promise = std::move(promise)](cocls::await_result<int> value) mutable {
             try {
                 std::cout << "Callback result:" << *value << std::endl;
+                promise(*value);
             } catch (...) {
                 promise(std::current_exception());
             }
@@ -31,5 +32,4 @@ cocls::future<int> cofn1() {
 
 int main(int, char **) {
     std::cout << "Result:" << cofn1().join() <<std::endl;
-
 }

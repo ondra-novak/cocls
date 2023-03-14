@@ -40,7 +40,7 @@ public:
             *flag = 0;
             return _alloc_ptr;
         } else {
-            void *ptr = ::operator new (sz);
+            void *ptr = ::operator new (sz+1);
             _state = sz+1;
             char *flag = reinterpret_cast<char *>(ptr)+sz;
             *flag = 1;

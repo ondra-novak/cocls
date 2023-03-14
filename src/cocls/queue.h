@@ -137,17 +137,24 @@ public:
      * @param x rvalue reference for item, use for movable itesm
      *
      * @note if there is awaiting coroutine, it may be resumed now (resume_lock is used)
+     * 
+     * @return function return suspend_point, which can be co_awaited. By co_awaitng the suspend_point
+     * causes to switch to the coroutine which received the pushed value. Without co_awaiting on
+     * this point, the coroutine can be resumed later when this coroutine is suspended or exited
+     * @retval true a coroutine was woken ap
+     * @retval false no coroutine awaited, value has been placed to queue
      */
     template<typename ... Args>
-    void push(Args && ... args) {
+    suspend_point<bool, future<T> > push(Args && ... args) {
         std::unique_lock lk(_mx);
         if (!_awaiters.empty()) {
             promise<T> p = std::move(_awaiters.front());
             _awaiters.pop();
             lk.unlock();
-            p(std::forward<Args>(args)...);
+            return p(std::forward<Args>(args)...);
         } else {
             _queue.emplace(std::forward<Args>(args)...);
+            return {};
         }
 
     }
@@ -209,17 +216,17 @@ public:
      * Useful to implement timeouts
      *
      * @param e exception to be set as result of unblocking
+     * @return function returns suspend_point. By co_awaiting on the suspend point, you can immediately switch to the unblocked coroutine
      * @retval true success
      * @retval false nobody is awaiting
      */
-    bool unblock_pop(std::exception_ptr e) {
+    suspend_point<bool, future<T> > unblock_pop(std::exception_ptr e) {
         std::unique_lock lk(_mx);
-        if (_awaiters.empty()) return false;
+        if (_awaiters.empty()) return {};
         promise<T> p = std::move(_awaiters.front());
         _awaiters.pop();
         lk.unlock();
-        p.set_exception(e);
-        return true;
+        return p.set_exception(e);        
     }
 
 
@@ -327,14 +334,13 @@ public:
      *
      *
      */
-    bool unblock_push(std::exception_ptr e) {
+    suspend_point<bool, future<void> > unblock_push(std::exception_ptr e) {
         std::unique_lock lk(this->_mx);
-        if (_blocked.empty()) return false;
+        if (_blocked.empty()) return {};
         auto front = std::move(_blocked.front());
         _blocked.pop();
         lk.unlock();
-        front.second.set_exception(e);
-        return true;
+        return front.second.set_exception(e);
     }
 
 protected:
