@@ -92,7 +92,7 @@ public:
           _scheduled.push_back({tp, std::move(p), id});
           std::push_heap(_scheduled.begin(), _scheduled.end(), compare_item);
           if (ntf) {
-               
+              _cond.notify_all();
           }
       }
 
@@ -176,18 +176,15 @@ public:
     ///cancel scheduled task (cancel sleep)
     /**
      * @param id identifier of task
-     * @return suspend_point containing status of operation. The result can be co_awaited to propagate cancel status to the coroutine faster
-     * @retval true canceled 
+     * @retval true canceled
      * @retval false not found
      *
      * @note associated future throws exception await_canceled_exception()
      *
      * @note associated promise is resolved in current thread, not in scheduler's thread
      */
-    suspend_point<bool, future<void> > cancel(ident id) {
-        auto p = remove(id);
-        if (p)  return p(std::make_exception_ptr(await_canceled_exception()));
-        else return {};
+    bool cancel(ident id) {
+        return cancel(id, std::make_exception_ptr(await_canceled_exception()));
     }
 
     ///cancel scheduled task (cancel sleep), you can specify own exception
@@ -199,8 +196,18 @@ public:
      *
      * @note associated promise is resolved in current thread, not in scheduler's thread
      */
-    suspend_point<bool, future<void> > cancel(ident id, std::exception_ptr e) {
-        return remove(id)(e);
+    bool cancel(ident id, std::exception_ptr e) {
+        auto p = remove(id);
+        if (p) {
+            if (_glob_state.has_value() && _glob_state->_pool) {
+                _glob_state->_pool->resolve(p, e);
+            } else {
+                p(e);
+            }
+            return true;
+        } else {
+            return false;
+        }
     }
 
     ///Starts the scheduler in current thread
@@ -416,7 +423,7 @@ protected:
         while (!_scheduled.empty() && (_scheduled[0]._tp <= now || !_scheduled[0]._p)) {
             auto p = std::move(_scheduled[0]._p);
             pop_item();
-            if (p) return p;
+            if (p) return std::move(p);
         }
         if (_scheduled.empty()) return std::chrono::system_clock::time_point::max();
         else return _scheduled[0]._tp;
