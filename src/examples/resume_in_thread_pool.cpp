@@ -1,22 +1,3 @@
-/** @file thread_pool_resumption_policy.cpp
- * 
- * Demonstrates using thread_pool_resumption_policy, which allows to bind a thread pool to a task. The
- * task is then resumed in this thread pool. 
- * 
- * Because there is no way how to initialize policy directly, it must be initialized by a function 
- * initialize_policy. Until this happen, the task is suspended. Once the task has a thread pool associated,
- * then it is started
- * 
- * So the function initialize_policy actually starts the task
- * 
- * Second part stops these tasks on ordinary task, which exits after 2 second, this resumes
- * thread_pool's task, they are still resumed on this thread pool, regardless on that ordinary
- * task was finished on main thread
- * 
- * @note Thread pool must be shared through the std::shared_ptr<> to ensure, that pool
- * exists till there is task which is using it
- * 
- */
 #include <iostream>
 #include <cocls/future.h>
 #include <cocls/shared_future.h>

@@ -322,7 +322,8 @@ inline void co_awaiter<promise_type>::sync() noexcept  {
  *
  * However you can also ignore return value or retrieve just
  * actual result without co_awaiting, which performs
- * default action, which is also pefromed in non-coroutine world
+ * a default action. This is also only awailable option in 
+ * non-coroutine world
  *
  *
  * @tparam RetVal return value - type of value wrapped into

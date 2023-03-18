@@ -21,6 +21,7 @@ namespace cocls {
  * stack_storage storage(_state); //state is shared state
  * storage = alloca(storage);   //allocate storage on stack
  * run_coro(storage, ...);  //run coroutine allocated on stack,  the coroutine need to use with_allocator
+ * @endcode
 */
 class stack_storage {
 public:

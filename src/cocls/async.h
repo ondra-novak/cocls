@@ -14,12 +14,23 @@
 #include <cassert>
 namespace cocls {
 
+///
 template<typename T> class future;
+///
 template<typename T> class promise;
+///
 template<typename T> class async_promise;
 
 
-
+///Coroutine for run asynchronous operations, it can be used to construct future<>
+/**
+ * If some interface expect, that future<T> will be returned, you can
+ * implement such future as coroutine. Just declare coroutine which
+ * returns future_coro, this future object can be converted to future<T>
+ *
+ * @param T returned value, can be void
+ * @param _Policy resumption policy - void means default policy
+ */
 template<typename T>
 class [[nodiscard]] async {
 public:

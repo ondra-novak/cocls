@@ -102,15 +102,7 @@ class promise;
 
 
 
-///Coroutine for run asynchronous operations, it can be used to construct future<>
-/**
- * If some interface expect, that future<T> will be returned, you can
- * implement such future as coroutine. Just declare coroutine which
- * returns future_coro, this future object can be converted to future<T>
- *
- * @param T returned value, can be void
- * @param _Policy resumption policy - void means default policy
- */
+
 template<typename T>
 class async;
 
@@ -964,6 +956,7 @@ future(async<T>) -> future<T>;
  *
  * @code
  * discard([&]{function_returning_future();});
+ * @endcode
  */
 template<typename Fn>
 void discard(Fn &&fn) {
