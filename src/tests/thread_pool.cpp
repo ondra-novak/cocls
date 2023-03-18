@@ -26,7 +26,7 @@ cocls::future<int> co_test(cocls::thread_pool &pool) {
     co_return r;
 }
 
-cocls::future<void> co_test2(cocls::thread_pool &pool, cocls::promise<int> &p, int w, std::thread::id id, bool eq) {
+cocls::future<void> co_test2(cocls::promise<int> &p, int w, std::thread::id id, bool eq) {
     cocls::future<int> f;
     p = f.get_promise();
     int v = co_await f;
@@ -50,14 +50,14 @@ int main(int, char **) {
 
     {
         cocls::promise<int> p;
-        auto f = co_test2(pool, p, 12,std::this_thread::get_id(), true);
+        auto f = co_test2( p, 12,std::this_thread::get_id(), true);
         p(12);
         f.join();
     }
 
     {
         cocls::promise<int> p;
-        auto f = co_test2(pool, p, 34,std::this_thread::get_id(), false);
+        auto f = co_test2( p, 34,std::this_thread::get_id(), false);
         pool.resolve(p,34);
         f.join();
     }

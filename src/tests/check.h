@@ -30,7 +30,7 @@
 #define CHECK_GREATER(a,b) CHECK_BINARY_OP(a,>,b)
 #define CHECK_LESS_EQUAL(a,b) CHECK_BINARY_OP(a,<=,b)
 #define CHECK_GREATER_EQUAL(a,b) CHECK_BINARY_OP(a,>=,b)
-#define CHECK_BETWEEN(a,b,c) CHECK_BINARY_OP(a,<=,b) CHECK_BINARY_OP(b,<=,c)
+#define CHECK_BETWEEN(a,b,c) do {CHECK_BINARY_OP(a,<=,b); CHECK_BINARY_OP(b,<=,c);} while(false)
 
 
 #define CHECK_EXCEPTION(type, ... ) \
