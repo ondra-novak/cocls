@@ -11,16 +11,16 @@ namespace cocls {
 
 /// Immediately resumes the current coroutine
 /**
- * By default, any awaitable which produces co_awaiter or awaiter to await resumes awaiting coroutine into coro_queue where 
+ * By default, any awaitable which produces co_awaiter or awaiter to await resumes awaiting coroutine into coro_queue where
  * it must wait, until current thread is available to process it. This class constructed as a co_await expression overrides this
  * behaviour. Awaiting coroutine is immediately resumed once the awaited operation is completed interrupting currently running coroutine
- *  
+ *
  * Usage
  * @code
  * co_await cocls::immediately(async_operation(...));
  * @endcode
- * 
- * @note this modificator can be used only with cocls::co_awaiter and variants. It must be supported on the awaiter. 
+ *
+ * @note this modificator can be used only with cocls::co_awaiter and variants. It must be supported on the awaiter.
  *
 */
 template<typename Awt>
@@ -40,26 +40,45 @@ protected:
         immediately *_this = reinterpret_cast<immediately *>(user_ptr);
         std::coroutine_handle<>::from_address(_this->_handle_addr).resume();
     }
-    Awt _awt;    
+    Awt _awt;
 };
 
 template<typename T>
 immediately(T &&x) -> immediately<decltype(retrieve_awaiter(x))>;
 
+///Immediately resume coroutine ready to run even in coro mode
+/**
+ * @param spt valid suspend point
+ * @return result carried within the suspend point
+ *
+ * @note function blocks while waiting coroutine is resumed
+ */
+template<typename T, typename P>
+auto immediately_resume(suspend_point<T,P> &&spt) {
+    if (!spt.await_ready()) {
+        std::coroutine_handle<> n = std::noop_coroutine();
+        auto h = spt.await_suspend(n);
+        if (h != n) {
+            h.resume();
+        }
+    }
+    return spt.await_resume();
+}
+
 
 /// Resume coroutine in parallel
 /**
- * By default, any awaitable which produces co_awaiter or awaiter to await resumes awaiting coroutine into coro_queue where 
+ * By default, any awaitable which produces co_awaiter or awaiter to await resumes awaiting coroutine into coro_queue where
  * it must wait, until current thread is available to process it. This class constructed as the co_await expression overrides this
  * behaviour. The resumed coroutine is executed in brand new detached thread, so it continues parallel to the resumer.
- * 
- * @note this modificator can be used only with cocls::co_awaiter and variants. It must be supported on the awaiter. 
- * 
+ *
+ * @note this modificator can be used only with cocls::co_awaiter and variants. It must be supported on the awaiter.
+ *
  * Usage
  * @code
  * co_await cocls::parallel(async_operation(...));
  * @endcode
- * 
+ *
  *
 */
 template<typename Awt>
@@ -84,12 +103,27 @@ protected:
         t.detach();
     }
     Awt _awt;
-    
+
 };
 
 template<typename T>
 parallel(T &&x) -> parallel<decltype(retrieve_awaiter(x))>;
 
+
+template<typename T, typename P>
+auto parallel_resume(suspend_point<T,P> &&spt) {
+    if (!spt.await_ready()) {
+        std::coroutine_handle<> n = std::noop_coroutine();
+        auto h = spt.await_suspend(n);
+        if (h != n) {
+            std::thread thr([h]{
+                coro_queue::resume(h);
+            });
+            thr.detach();
+        }
+    }
+    return spt.await_resume();
+}
 
 
 

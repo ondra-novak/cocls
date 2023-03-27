@@ -178,24 +178,24 @@ public:
     };
 
 
-    /// converts awaitable/awaiter to resume awaiting coroutine in thread pool  
+    /// converts awaitable/awaiter to resume awaiting coroutine in thread pool
     /**
      * Example to use this operator
      * @code
      * //normal usage
      * int ret = co_await calc_async();
-     * 
+     *
      * //thread pool
      * thread_pool pool;
      * int ret2 = co_await pool(calc_async());
      * @endcode
-     * 
+     *
      * Operator converts awaitable to awaiter which is able to resume coroutine with allocating a thread in the thread
      * pool. So coroutine will not block the thread which caused resumption and also is resumed immediately, and it
      * is not put to coroutine queue (instead it is put to thread_pool queue)
-     * 
+     *
      * If the awaiting operation is already resolved, no thread is allocated and execution continues in current thread
-     * 
+     *
     */
     template<typename Awaitable>
     auto operator()(Awaitable &&awt) -> enqueue_awaiter<decltype(retrieve_awaiter(std::declval<Awaitable>()))> {
@@ -299,6 +299,34 @@ public:
         });
     }
 
+    ///Resumes prepared coroutine in a thread
+    /**
+     * By passing a suspend point to this function, you can resume the coroutine, which is ready
+     * to run, in different thread. So the coroutine will continue in thread allocated in this thread pool
+     * while the current code will continue to run without interruption.
+     *
+     * @param spt suspend point
+     * @return a value associated with suspend point - if any
+     *
+     * @note The function supports a suspend point which acts as awaiter and it is able to return
+     * a coroutine handle from the await_suspend(); The returned handle is passed to the thread pool
+     * and resumed there. The function calls await_ready, await_suspend and await_resume in the correct
+     * order.
+     */
+    template<typename T, typename P>
+    auto resume(suspend_point<T, P> &&spt) {
+        if (!spt.await_ready()) {
+            auto n = std::noop_coroutine();
+            std::coroutine_handle<> h = spt.await_suspend(n);
+            if (h != n) {
+                enqueue([h]{
+                    coro_queue::resume(h);
+                });
+            }
+        }
+        return spt.await_resume();
+
+    }
 
 
     struct current {

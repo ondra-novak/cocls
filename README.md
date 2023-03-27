@@ -828,7 +828,7 @@ auto ret = co_await calc_somethin_async();
 co_await pool
 ```
 
-Rozdíl je pouze v tom, že v případě, že na operaci není třeba čekat, k alokací vlákna nedojde a kód pokračuje bez přerušení. 
+Rozdíl je pouze v tom, že v případě, že na operaci není třeba čekat, k alokací vlákna nedojde a kód pokračuje bez přerušení.
 
 
 
@@ -1004,7 +1004,7 @@ co_await pool(...);
 
 ### Vytvoření vlákna při probuzení
 
-Bez thread poolu lze při probuzení vynutit vytvoření detachovaného vláknal. 
+Bez thread poolu lze při probuzení vynutit vytvoření detachovaného vláknal.
 
 ```
 co_await cocls::parallel(...);
@@ -1012,9 +1012,31 @@ co_await cocls::parallel(...);
 
 ### Prioritní probuzení
 
-Korutina si může vynutit prioritní probuzení v aktuálním vláknu bez ohledu na stav vlákna. Aktuální vlákno je přerušeno a pokračuje až když korutina skončí nebo je přerušena. Toto vynucení alokuje extra frame v zásobníku. Opakované vynucování prioritního probuzení může významně zaplnit zásobní. 
+Korutina si může vynutit prioritní probuzení v aktuálním vláknu bez ohledu na stav vlákna. Aktuální vlákno je přerušeno a pokračuje až když korutina skončí nebo je přerušena. Toto vynucení alokuje extra frame v zásobníku. Opakované vynucování prioritního probuzení může významně zaplnit zásobní.
 
 ```
 co_await cocls::immediately(...);
 ```
 
+### Probuzení korutiny čekající na suspend_point
+
+Pokud některá funkce vrací `suspend_point`, znamená to, že její čínnost se některá z korutin stala připravená k běhu. Suspend point lze ignorovat, pak se korutina buď přímo spustí, nebo zařadí do fronty v závislosti na režimu vlákna. Pokud provedeme `co_await` na `suspend_point`, pak se současná korutina uspí a pokračuje korutina připravená k běhu. Avšak `suspend_point` lze vyřídit i v jiném vlákně.
+
+```
+cocls::thread_pool pool;
+promise<int> p = ...
+
+pool.resume(p(42)); //nastav futuru a probud cekajici korutinu ve vlakne
+```
+
+Zde nastavení futury zkrze promisu vrací suspend_point, ktery nese připravenou korutinu k běhu. Místo čekání na objektu lze zavolat `thread_pool::resume` to obnovit připravenou korutinu v thread poolu - zaalokuje se vlákno a korutina pokračuje v běhu v daném vlákně
+
+Pokud není k dispozici thread_pool, lze vlákno vytvořit ad-hoc.
+
+```
+promise<int> p = ...
+
+parallel_resume(p(42));
+```
+
+Funkce `parallel_resume` vytvoří ad-hoc vlákno a v něm obnoví běh čekající korutiny.
