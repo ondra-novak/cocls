@@ -816,10 +816,11 @@ public:
     ///Construct a future and pass a callback function
     future_with_cb(Fn &&fn):_fn(std::forward<Fn>(fn)) {
         this->_awaiter = this;
-        set_resume_fn([](awaiter *me, auto, auto) noexcept {
+        set_resume_fn([](awaiter *me, auto) noexcept -> suspend_point<void> {
             auto _this = static_cast<future_with_cb<T,Fn> *>(me);
             _this->_fn(*_this);
             delete _this;
+            return {};
         });
     }
 
@@ -911,9 +912,10 @@ void discard(Fn &&fn) {
             waiting = (_fut.operator co_await()).subscribe_awaiter(this);
         }
 
-        static void fin(awaiter *me, void *, std::coroutine_handle<> &) noexcept {
+        static suspend_point<void> fin(awaiter *me, void *) noexcept {
             auto _this = static_cast<Awt *>(me);
             delete _this;
+            return {};
         }
     protected:
         fut_type _fut;

@@ -93,9 +93,10 @@ public:
          * @param user_ptr - used to point to generator's promise type
          * @param h - unused in sync mode
          */
-        static void resume_fn_sync(awaiter *, void *user_ptr, std::coroutine_handle<> &) noexcept {
+        static suspend_point<void> resume_fn_sync(awaiter *, void *user_ptr) noexcept {
             auto g = reinterpret_cast<promise_type *>(user_ptr);
             g->unblock_sync();
+            return {};
         }
 
 
@@ -106,9 +107,9 @@ public:
            @param h - is set to coroutine handle to resume - returned during promise resolution
          *
          */
-        static void resume_fn_future(awaiter *, void *user_ptr, std::coroutine_handle<> &h) noexcept {
+        static suspend_point<void> resume_fn_future(awaiter *, void *user_ptr) noexcept {
             auto g = reinterpret_cast<promise_type *>(user_ptr);
-            h = g->unblock_future();
+            return g->unblock_future();
         }
 
         void unblock_sync() {
@@ -116,11 +117,11 @@ public:
             _block.notify_all();
         }
 
-        std::coroutine_handle<> unblock_future() {
+        suspend_point<void> unblock_future() {
 
-            if (done()) return _awaiting(drop).pop();
-            else if (_exp) return _awaiting(_exp).pop();
-            else return _awaiting(std::move(*_ret)).pop();
+            if (done()) return _awaiting(drop);
+            else if (_exp) return _awaiting(_exp);
+            else return _awaiting(std::move(*_ret));
         }
 
     public:
@@ -142,7 +143,7 @@ public:
                 p = &me.promise();
                 p->_arg = nullptr;
                 awaiter *caller = std::exchange(p->_caller, nullptr);
-                return caller->resume_handle();
+                return caller->resume().pop();
             }
             reference_Arg  await_resume() noexcept {
                 if constexpr(!arg_is_void) {

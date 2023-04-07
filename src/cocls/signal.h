@@ -40,7 +40,7 @@ class signal {
         storage_type *_cur_val = nullptr;
         std::optional<storage_type> _value_storage;
 
-        suspend_point<std::size_t> notify_awaiters() {
+        suspend_point<void> notify_awaiters() {
             return awaiter::resume_chain(_chain);
         }
 
@@ -93,7 +93,7 @@ public:
          */
         template<typename ... Args>
         CXX20_REQUIRES(std::is_constructible_v<storage_type, Args...> )
-        suspend_point<std::size_t> operator()(Args && ... args) const {
+        suspend_point<void> operator()(Args && ... args) const {
             _state->_value_storage.emplace(std::forward<Args>(args)...);
             _state->_cur_val = &(*_state->_value_storage);
             return _state->notify_awaiters();
@@ -111,7 +111,7 @@ public:
          * you need to protect the returned suspend point as well.
          *
          */
-        suspend_point<std::size_t> operator()(rvalue_param val) const {
+        suspend_point<void> operator()(rvalue_param val) const {
             _state->_value_storage.emplace(std::move(val));
             _state->_cur_val = &(*_state->_value_storage);
             return _state->notify_awaiters();
@@ -133,7 +133,7 @@ public:
          * return value or using co_await on it.
          *
          */
-        suspend_point<std::size_t> operator()(lvalue_param val) const {
+        suspend_point<void> operator()(lvalue_param val) const {
             _state->_cur_val = &val;
             return _state->notify_awaiters();
         }
@@ -266,8 +266,9 @@ public:
                     :emitter(state)
                     ,_fn(std::forward<Fn>(fn)) {
 
-                this->set_resume_fn([](awaiter *me, auto, auto) noexcept {
-                   static_cast<Awt *>(me)->resume();
+                this->set_resume_fn([](awaiter *me, auto) noexcept -> suspend_point<void> {
+                   static_cast<Awt *>(me)->resume();                   
+                   return {};
                 });
             }
 

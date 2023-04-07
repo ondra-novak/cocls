@@ -34,14 +34,11 @@ public:
      *  @param _this pointer to associated awaiter object. You need to static_cast<deriver> to
      *          retrieve pointer to derived instance.
      *  @param _context arbitrary pointer which meaning is defined by the owner.
-     *  @param _out_handle reference to handle which can be modified by the called function. By chainging
-     *      the value of the handle is interpreted that specified coroutine must be resumed, so
-     *      the function just prepared resumption. By leaving value not modified is interprted
-     *      that resume function finished resumption, no coroutine is resumed.
+     *  @return Suspend point, if the function set coroutines ready, it can put them to the returned suspend point
      *
      *
      */
-    using resume_fn = void (*)(awaiter *_this, void *_context, std::coroutine_handle<> &_out_handle) noexcept;
+    using resume_fn = suspend_point<void> (*)(awaiter *_this, void *_context) noexcept;
 
     awaiter() = default;
 
@@ -54,64 +51,11 @@ public:
      *
      *  @note Function is declared as noexcept. Any callback function must avoid to throw exception
      */
-    void resume() noexcept {
+    suspend_point<void> resume() noexcept {
         if (_resume_fn) {
-            std::coroutine_handle<> h;
-            _resume_fn(this, _handle_addr, h);
-            if (h) coro_queue::resume(h);
+            return _resume_fn(this, _handle_addr);
         }
         else {
-            coro_queue::resume(std::coroutine_handle<>::from_address(_handle_addr));
-        }
-    }
-
-    /// Prepares the awaiter for resumption and returns coroutine handle to be resumed
-    /**
-     * THis function is called during await_suspend() when a coroutine is being suspended. The
-     * function returns handle of coroutine to resume. This helps to transfer execution by a
-     * symmetric transfer (without adding a stack level), which is much faster than classic
-     * transfer.
-     *
-     * If the awaiter is not associated with a coroutine, its function is called directly and
-     * then await_suspend() is left without switching to a coroutine
-     *
-     * @note works similar as resume_handle_or_null() but it can return noop_coroutine(), if there
-     * is no coroutine to resume. 
-     **/
-    std::coroutine_handle<> resume_handle() noexcept {
-        if (_resume_fn) {
-            std::coroutine_handle<> h;
-            _resume_fn(this, _handle_addr, h);
-            if (h) { //resume returned coroutine
-                return h;
-            } else {
-                //this coroutine is being suspended, so retrieve next queued coroutine and resume it
-                return coro_queue::resume_handle_next();
-            }
-        } else {
-            return std::coroutine_handle<>::from_address(_handle_addr);
-        }
-    }
-
-    /// Prepares the awaiter for resumption and returns coroutine handle to be resumed
-    /**
-     * THis function is called during await_suspend() when a coroutine is being suspended. The
-     * function returns handle of coroutine to resume. This helps to transfer execution by a
-     * symmetric transfer (without adding a stack level), which is much faster than classic
-     * transfer.
-     *
-     * If the awaiter is not associated with a coroutine, its function is called directly and
-     * then await_suspend() is left without switching to a coroutine
-     * 
-     * @note works similar as resume_handle() but it can return null coroutine handle, if there
-     * is no coroutine to resume. 
-     **/
-    std::coroutine_handle<> resume_handle_or_null() noexcept {
-        if (_resume_fn) {
-            std::coroutine_handle<> h;
-            _resume_fn(this, _handle_addr, h);
-            return h;
-        } else {
             return std::coroutine_handle<>::from_address(_handle_addr);
         }
     }
@@ -129,7 +73,7 @@ public:
      * @param chain holds chain
      * @return count of released awaiters (including skipped)
      */
-    static suspend_point<std::size_t> resume_chain(awaiter_collector &chain) {
+    static suspend_point<void> resume_chain(awaiter_collector &chain) {
         //acquire memory order, we need to see modifications made by other thread during registration
         //this is first operation of the thread of awaiters
         return resume_chain_lk(chain.exchange(nullptr, std::memory_order_acquire));
@@ -144,22 +88,20 @@ public:
      * @note It marks chain disabled, so futher registration are rejected with false
      * @see subscribe_check_ready()
      */
-    static suspend_point<std::size_t> resume_chain_set_ready(awaiter_collector &chain, awaiter &ready_state) {
+    static suspend_point<void> resume_chain_set_ready(awaiter_collector &chain, awaiter &ready_state) {
         //acquire memory order, we need to see modifications made by other thread during registration
         //this is first operation of the thread of awaiters
         return resume_chain_lk(chain.exchange(&ready_state, std::memory_order_acquire));
     }
-    static suspend_point<std::size_t> resume_chain_lk(awaiter *chain) {
-        std::size_t count = 0;
+    static suspend_point<void> resume_chain_lk(awaiter *chain) {
         suspend_point<void> ret;
         while (chain) {
             auto y = chain;
             chain = chain->_next;
             y->_next = nullptr;
-            ret.push_back(y->resume_handle_or_null());
-            ++count;
+            ret.push_back(y->resume());
         }
-        return {std::move(ret), count};
+        return ret;
     }
     ///subscribe this awaiter but at the same time, check, whether it is marked ready
     /**
@@ -213,7 +155,7 @@ protected:
      */
     bool _will_be_resumed = false;
 
-    static void null_fn(awaiter *, void *, std::coroutine_handle<> &) noexcept {}
+    static suspend_point<void> null_fn(awaiter *, void *) noexcept {return {};}
 
 
 
@@ -316,8 +258,9 @@ public:
         flag.notify_all();
     }
 
-    static void wakeup(awaiter *me, void *, std::coroutine_handle<> &) noexcept {
+    static suspend_point<void> wakeup(awaiter *me, void *) noexcept {
         static_cast<sync_awaiter *>(me)->wakeup();
+        return {};
     }
 };
 

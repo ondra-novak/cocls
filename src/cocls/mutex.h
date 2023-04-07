@@ -89,7 +89,7 @@ public:
             mutex *mx = _ptr.release();
             if  (mx) {
                 mx->unlock([&](awaiter *awt) {
-                    ret.push_back(awt->resume_handle_or_null());
+                    ret.push_back(awt->resume());
                 });
             }
             return ret;

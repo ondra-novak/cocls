@@ -288,7 +288,7 @@ Promise může být dropnuta i ručně zavoláním promise s parametrem `cocls::
     p(cocls::drop); //drop promise
 ```
 
-### Nastavení výjimku
+### Nastavení výjimky
 
 Promise nemusí být jen použita k nastavení hodnoty, ale k nahlášení výjimky. Pokud je promise zavolána s objektem `std::exception_ptr`, pak se uložená výjimka vyhodí na čekající straně.
 
@@ -326,7 +326,7 @@ V rámci korutiny async<T> existuje evidence dvou stavů vlákna
 
 Pokud jakákoliv korutina má být obnovena v režímu *coro mode*, nedojde k jejímu okamžitému obnovení. Místo toho je korutina zařazena do fronty k obnovení. Tato fronta existuje v rámci vlákna (každé vlákno má oddělenou frontu). Ukončení nebo přerušení aktuálně běžící korutiny obnoví další korutinu z fronty. Režim *coro mode* se ukončí, jakmile je fronta prázdná
 
-Pokud Váš kód řídí korutiny manuálně a chcete využít tuto vlastnost, nevolejte `h.resume()`, místo toho zavolejte `coro_queue::resume(h)`. Tuto funkci lze bezpečně volat i v *normal mode*, pak se vlákno přepne do *coro mode* podle výše uvedených pravidel.
+Pokud Váš kód řídí korutiny manuálně a chcete využít tuto vlastnost, nevolejte `h.resume()`, místo toho zavolejte `coro_queue::resume(h)`. Tuto funkci lze bezpečně volat i v *normal mode*, pak se vlákno přepne do *coro mode* podle výše uvedených pravidel. (alternativně lze použít ;`suspend_point`)
 
 **Poznámka** - odlišení *coro mode* od *normal mode* řeší situace, ve kterých by mohlo dojít k naskládání rámců korutin na aktuálním zásobníku. Navíc pokud by došlo k pokusu obnovení korutiny, která již má svůj rámec aktivní, je toto považováno za chybu a výsledkem je UB. Obnovování korutin v režimu *coro mode* znemožňuje naskládání rámci na sebe
 
@@ -418,10 +418,9 @@ Awaiter je objekt, který lze použít s operátorem `co_await`. Může být př
 
 Awaiter často vzniká jako důsledek zavolání **operator co_await** na awaitable objektu nebo funkci
 
-V knihovně `cocls` je základovou třídu pro většinu awaiterů třída `awaiter`. Přes tuto base třídu lze přistupovat k awaiteru, na kterém byla korutina uspána. Obsahuje dvě funkce
+V knihovně `cocls` je základovou třídu pro většinu awaiterů třída `awaiter`. Přes tuto base třídu lze přistupovat k awaiteru, na kterém byla korutina uspána. Obsahuje jednu funkci
 
-* **resume()** - probudí spící korutinu
-* **resume_handle()** - vrátí handle spící korutiny, má se za to, že účelem volání je korutinu probudit skrze handle.
+* **resume()** - probudí spící korutinu. Korutina se přepne ze stavu "uspaná" na stav "připravená". Funkce vrací `suspend_point`, který tento stav manifestuje. Pokud je zahozen, je korutina spuštěna, nebo zařazena do fronty na aktuálním vlákně.
 
 Awaitery se často registrují na kolektorech tak aby třída, která má schopnost uspávat a probouzet korutiny, dokázala snadno identifikovat a probudit korutinu, kterou probudit chce.
 
@@ -436,22 +435,21 @@ Awaiter však nemusí jen budit korutinu. Awaiter nabízí funkcí `set_resume_f
 Rozhraní `set_resume_fn` očekává C-like statickou funkci - lze použít lambdu bez clousure. Funkce má následující prototip
 
 ```
-static void resume_fn(awaiter *_this, void *_context, std::coroutine_handle<> &_out_handle) noexcept;
+static suspend_point<void> resume_fn(awaiter *_this, void *_context) noexcept;
 ```
 
 * **_this** - pointer na `awaiter` jehož instance byla oslovena. Pokud dědíme awaitera, musíme si pointer `static_cast<>`
 * **_context** - libovolný ukazatel na cokoliv, nastavují se funkcí `set_resume_fn`
-* **_out_handle** - reference na handle nějaké korutiny, je považován za výstupní proměnnou. Funkce jej může ignorovat pokud jej nepoužívá. Pokud však výsledkem zpracování je korutina, která má být probuzena, je vhodní nastavit její handle do této proměnné před návratem z funkce. Je to efektivnější, než ve funkci volat přímo `handle.resume()`
+* Funkce vrací `suspend_point<void>`, přičemž je naprosto v pořádku, pokud je výsledkem prázdný suspend_point. Nicméně dává to funkci možnost připravit jednu i více korutin, pokud je třeba. Tento objekt je pak výsledkem volání `resume()` na awaiteru
 
-Volba **statické funkce bez kontextu** byla zvolena za účelem udržení objektu awaiter v jednoduchém layout bez nutnosti alokovat paměť například pro clousure dané funkce. Ten kdo si awaitery dědí má z pravidla přístup k dalším částem svého objektu zkrze *_this*. Bylo také záměrně upuštěno od použití virtuálních funkcí, protože většina awaiterů `resume_fn` nepoyužívá a je orientováno čistě na korutiny, kde se funkce nevolá a tím se redukuje množství indirekce.
+Volba **statické funkce bez kontextu** byla zvolena za účelem udržení objektu awaiter v jednoduchém layout bez nutnosti alokovat paměť například pro clousure dané funkce. Ten kdo si awaitery dědí má z pravidla přístup k dalším částem svého objektu zkrze *_this*. Bylo také záměrně upuštěno od použití virtuálních funkcí, protože většina awaiterů `resume_fn` nepoužívá a je orientováno čistě na korutiny, kde se funkce nevolá a tím se redukuje množství indirekce.
 
 * `co_awaiter<promise_type>` - zajišťuje operaci co_await na většině awaitable objektů
 * `sync_awaiter` - umožňuje uspávat a probouze celá vlákna (`sync_awaiter::wait_sync`)
-* `switch_to_awt` - implementuje přepnutí kontextu pro funkcí `switch_to`
 * `self` - neuspí korutinu, ale vrací její handle `auto myhandle = co_await self()`
 * `thread_pool::co_awaiter` - přestěhuje korutinu do jiného vlákna
 
-
+**Pozor:** Zatímco korutina se skrze awaiter dostane do režimu **připřavené k běhu** skrze `suspend_point<>`, jakákoliv callback funkce se exekuuje okamžitě. Nelze tedy exekuci callback funkce naplánovat stejně jako korutiny skrze `suspend_point<>`.
 
 
 ## Generátor

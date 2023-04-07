@@ -19,9 +19,10 @@ template<typename T, typename Arg>
 class GenCallback: public awaiter {
 public:
     GenCallback(GenAggrQueue<T, Arg> &q,generator<T, Arg> gen):_q(q), _gen(std::move(gen)) {
-        set_resume_fn([](awaiter *me, void *, std::coroutine_handle<> &) noexcept{
+        set_resume_fn([](awaiter *me, void *) noexcept ->suspend_point<void>{
             auto _this = static_cast<GenCallback *>(me);
             _this->_q.push(_this);
+            return {};
         });
     }
     GenCallback(const GenCallback &) =delete;

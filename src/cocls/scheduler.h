@@ -183,7 +183,7 @@ public:
      *
      * @note associated promise is resolved in current thread, not in scheduler's thread
      */
-    bool cancel(ident id) {
+    suspend_point<bool> cancel(ident id) {
         return cancel(id, std::make_exception_ptr(await_canceled_exception()));
     }
 
@@ -196,15 +196,10 @@ public:
      *
      * @note associated promise is resolved in current thread, not in scheduler's thread
      */
-    bool cancel(ident id, std::exception_ptr e) {
+    suspend_point<bool> cancel(ident id, std::exception_ptr e) {
         auto p = remove(id);
         if (p) {
-            if (_glob_state.has_value() && _glob_state->_pool) {
-                _glob_state->_pool->run(p(e));
-            } else {
-                p(e);
-            }
-            return true;
+            return {p(e), true};
         } else {
             return false;
         }

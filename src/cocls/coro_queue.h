@@ -290,6 +290,11 @@ private:
 public:
     ///Construct empty suspend point - until there is at least one coroutine, it cannot be awaited
     suspend_point() {_list.reserve(inline_count);}
+
+    suspend_point(std::coroutine_handle<> h) {
+        _list.reserve(inline_count);
+        _list.push_back(h);
+    }
     ///I can't copy suspend point
     suspend_point(const suspend_point &other) = delete;
     ///You can move suspend point
@@ -327,6 +332,15 @@ public:
      */
     void push_back(std::coroutine_handle<> h) {
         if (h) _list.push_back(h);
+    }
+    void push_back(suspend_point<void> &x) {
+        for (auto &h: x._list) {
+            _list.push_back(h);
+        }
+        x._list.clear();
+    }
+    void push_back(suspend_point<void> &&x) {
+        push_back(x);
     }
     
     ///Pop one handle from the suspend_point instance.

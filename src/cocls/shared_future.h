@@ -208,8 +208,9 @@ protected:
 
 template<typename T, typename Base>
 inline void shared_future<T,Base>::resolve_cb::charge(std::shared_ptr<future_internal> ptr) {
-        this->set_resume_fn([](awaiter *x, auto, auto) noexcept {
+        this->set_resume_fn([](awaiter *x, auto) noexcept -> suspend_point<void>{
             static_cast<resolve_cb *>(x)->_ptr = nullptr;
+            return {};
         });
        _ptr = ptr;
        if (!(ptr->operator co_await()).subscribe_awaiter(&ptr->resolve_tracer)) {

@@ -167,11 +167,10 @@ public:
         constexpr decltype(auto) await_resume() {return _awt.await_resume();}
     protected:
 
-        static void perform_resume(awaiter *, void *user_ptr, std::coroutine_handle<> &) noexcept {
+        static suspend_point<void> perform_resume(awaiter *, void *user_ptr) noexcept {
             enqueue_awaiter *_this = reinterpret_cast<enqueue_awaiter *>(user_ptr);
-            _this->_pool.run_detached([_this]{
-                _this->resume();
-            });
+            _this->_pool.run(_this->resume());
+            return {};
         }
         Awt _awt;
         thread_pool &_pool;

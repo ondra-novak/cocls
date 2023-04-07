@@ -76,13 +76,14 @@ public:
     constexpr decltype(auto) await_resume() {return _awt.await_resume();}
 protected:
 
-    static void perform_resume(awaiter *, void *user_ptr, std::coroutine_handle<> &) noexcept {
+    static suspend_point<void> perform_resume(awaiter *, void *user_ptr) noexcept {
         parallel *_this = reinterpret_cast<parallel *>(user_ptr);
         auto h = std::coroutine_handle<>::from_address(_this->_handle_addr);
         std::thread t([h]{
             h.resume();
         });
         t.detach();
+        return {};
     }
     Awt _awt;
 
