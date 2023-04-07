@@ -344,7 +344,7 @@ public:
      */
     std::coroutine_handle<> pop() {
         if (_list.empty()) return std::noop_coroutine();
-        auto h = _list.front();
+        auto h = _list.back();
         _list.pop_back();
         return h;
     }
