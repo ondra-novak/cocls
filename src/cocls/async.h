@@ -136,9 +136,7 @@ protected:
     suspend_point<void> start_coro() {
         assert("There is no coroutine to start" && _h != nullptr);
         auto h = std::exchange(_h,{});
-        suspend_point<void> ret;
-        ret.push_back(h);
-        return ret;
+        return suspend_point<void>(h);
     }
 
 

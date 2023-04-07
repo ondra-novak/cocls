@@ -666,7 +666,7 @@ Narozdíl od standardního mutexu, zde se funkce `lock()` musí volat s `co_awai
 mutexu uvolní. Vlastnictví mutexu se sleduje objektem `ownership`. Tento objekt není kopírovatelný, pouze přesouvatelný. Jakmile je objekt opuštěn, nebo je zavolána funkce `.release()`, pak je zámek odemčen.
 
 Objekt `mutex` implementuje frontu čekajících korutin. Pokud některá korutina uvolní mutex,
-vlastnictví se automaticky přenese na první čekající korutinu. Vlastní obnovení korutiny se řídí podle pravidle vlákna ve stavu *coro mode*. Tedy obnovená korutina je umístěna do fronty k obnovení a je obnovena podle plánu jakmile se aktuální korutina dokončí nebo přeruší. Z toho důvodu funkce `.release()` vrací `suspend_point<void,mutex>`, pomocí něhož lze přes operátor co_await přepnout do korutiny, která je novým vlastníkem zámku.
+vlastnictví se automaticky přenese na první čekající korutinu. Vlastní obnovení korutiny se řídí podle pravidle vlákna ve stavu *coro mode*. Tedy obnovená korutina je umístěna do fronty k obnovení a je obnovena podle plánu jakmile se aktuální korutina dokončí nebo přeruší. Z toho důvodu funkce `.release()` vrací `suspend_point<void>`, pomocí něhož lze přes operátor co_await přepnout do korutiny, která je novým vlastníkem zámku.
 
 Uvolnění mutexu předčasně
 
@@ -754,6 +754,10 @@ void stop_reader(queue<int> &q) {
 nedojde
 
 Typické použití je k implementaci timeoutu. Koroutina, která čte si nainstaluje timer, který zavolá `unblock_pop`, pokud vyprší čas čekání na hodnotu ve frontě. Pakliže je hodnota získána, může být timer odinstalován.
+
+### Fronta void (`queue<void>`)
+
+Objekt `queue<void>` nepředává žádné hodnoty, i tak může fungovat jako fronta, Ale spíše funguje jako semafor. Funkcí `push` se zvýší čítač, funkcí `pop` se sníží čítač. Pokud je čítač nulový, zůstane funkce `pop()` blokována, dokud někdo něudělá `push`. 
 
 ## Signal
 
@@ -1022,6 +1026,8 @@ Výhoda tohoto alokátoru je že pokud se podaří rámec spočítat dostatečn�
 
 V okamžiku, kdy je asynchroní operace dokončena, na kterou čeká korutina, je čekající korutina probuzena a pokračuje z místa svého uspání. Pokud je však vlákno v režimu *coro mode*, pak se korutina probudí až v okamžiku, kdy současná korutina je uspána nebo ukončena. Toto výchozí chvání lze předefinovat pomocí modifikátorů `co_await`. Ty definují *resumption_policy* tedy "politiku probouzení".
 
+**Pozor**: Pokud si korutina sama diktuje způsob probuzení, pak takovou korutinu nelze řídit skrze `suspend_point`
+
 ### Probuzení v thread poolu
 
 ```
@@ -1031,7 +1037,7 @@ co_await pool(...);
 
 ### Vytvoření vlákna při probuzení
 
-Bez thread poolu lze při probuzení vynutit vytvoření detachovaného vláknal.
+Bez thread poolu lze při probuzení vynutit vytvoření detachovaného vlákna.
 
 ```
 co_await cocls::parallel(...);
@@ -1053,7 +1059,7 @@ Pokud některá funkce vrací `suspend_point`, znamená to, že její čínnost 
 cocls::thread_pool pool;
 promise<int> p = ...
 
-pool.resume(p(42)); //nastav futuru a probud cekajici korutinu ve vlakne
+pool.resume(p(42)); //nastav futuru a probud cekajici korutinu ve vlakně
 ```
 
 Zde nastavení futury zkrze promisu vrací suspend_point, ktery nese připravenou korutinu k běhu. Místo čekání na objektu lze zavolat `thread_pool::resume` to obnovit připravenou korutinu v thread poolu - zaalokuje se vlákno a korutina pokračuje v běhu v daném vlákně

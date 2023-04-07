@@ -250,7 +250,6 @@ private:
 
     struct Allocator {
         using value_type = std::coroutine_handle<>;
-        using is_always_equal = std::false_type;
         using size_type = std::size_t;
         using difference_type	= std::ptrdiff_t;
         template< class U >
@@ -260,31 +259,26 @@ private:
         };
 
         char _buffer[sizeof(std::coroutine_handle<>)*inline_count];
-        bool _used = false;
 
         Allocator() = default;        
         Allocator(Allocator &&a) = delete;
         Allocator(const Allocator &) = delete;
         std::coroutine_handle<> *allocate(std::size_t sz) {
             void *ret;
-            if (sz > inline_count || _used) {
+            if (sz > inline_count) {
                 ret = ::operator new(sizeof(std::coroutine_handle<>)*sz);
             } else {
-                _used = true;
                 ret = _buffer;
             }
             return  reinterpret_cast<std::coroutine_handle<> *>(ret);
         }
         void deallocate(std::coroutine_handle<> *ptr, std::size_t) {
-            if (reinterpret_cast<char *>(ptr) == _buffer) {
-                _used = false;
-            } else {
+            if (reinterpret_cast<char *>(ptr) != _buffer) {
                 ::operator delete(ptr);
             }
         }
-        friend bool operator==(const Allocator &a, const Allocator &b)  {
-            if (&a == &b) return true;
-            return !a._used && !b._used;
+        friend constexpr bool operator==(const Allocator &, const Allocator &)  {
+            return true;
         }
     };
 public:

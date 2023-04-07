@@ -202,14 +202,14 @@ public:
         return enqueue_awaiter<AWT>(std::forward<Awaitable>(awt), *this);
     }
 
-    ///Run coroutines in thread pool
+    ///Resume coroutines in thread pool
     /**
      * If you captured a suspend_point, you can resume prepared coroutines in a thread pool without suspension
      * @param spt suspend point instance
      * @return a value associated with suspend point.
      */    
     template<typename T>
-    T run(suspend_point<T> &spt) {
+    T resume(suspend_point<T> &spt) {
         while (!spt.empty()) {
             std::coroutine_handle<> h = spt.pop();
             enqueue([h]{coro_queue::resume(h);});            
@@ -227,7 +227,7 @@ public:
      */    
     template<typename T>
     T run(suspend_point<T> &&spt) {
-        return run(spt);
+        return resume(spt);
     }
 
     ///Transfer coroutine to the thread pool
