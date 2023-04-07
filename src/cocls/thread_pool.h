@@ -169,7 +169,7 @@ public:
 
         static suspend_point<void> perform_resume(awaiter *, void *user_ptr) noexcept {
             enqueue_awaiter *_this = reinterpret_cast<enqueue_awaiter *>(user_ptr);
-            _this->_pool.run(_this->resume());
+            _this->_pool.resume(_this->resume());
             return {};
         }
         Awt _awt;
@@ -207,12 +207,12 @@ public:
      * If you captured a suspend_point, you can resume prepared coroutines in a thread pool without suspension
      * @param spt suspend point instance
      * @return a value associated with suspend point.
-     */    
+     */
     template<typename T>
     T resume(suspend_point<T> &spt) {
         while (!spt.empty()) {
             std::coroutine_handle<> h = spt.pop();
-            enqueue([h]{coro_queue::resume(h);});            
+            enqueue([h]{coro_queue::resume(h);});
         }
         if constexpr(!std::is_void_v<T>) {
             return spt;
@@ -224,9 +224,9 @@ public:
      * If you captured a suspend_point, you can resume prepared coroutines in a thread pool without suspension
      * @param spt suspend point instance
      * @return a value associated with suspend point.
-     */    
+     */
     template<typename T>
-    T run(suspend_point<T> &&spt) {
+    T resume(suspend_point<T> &&spt) {
         return resume(spt);
     }
 
@@ -288,9 +288,9 @@ public:
     /**
      * @param fn asynchronous coroutine
      * @return future object which captures a result
-     * 
+     *
      * @note if you need to start async<> in thread pool without returning the future<>, you
-     * can simply call run(fn.detach()) 
+     * can simply call run(fn.detach())
      */
     template<typename T>
     future<T> run(async<T> &fn) {

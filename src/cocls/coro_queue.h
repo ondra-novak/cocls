@@ -138,7 +138,7 @@ struct coro_queue {
     /**
      *  @param h coroutine being suspended
      *  @return coroutine to resume
-     *  
+     *
      *  @note if no queue is installed, function returns argument
      */
     static std::coroutine_handle<> swap_coroutine(std::coroutine_handle<> h) noexcept {
@@ -182,7 +182,7 @@ struct coro_queue {
         }
     }
 
-    template<typename Fn> 
+    template<typename Fn>
     static auto create_suspend_point(Fn &&fn);
 
 
@@ -217,26 +217,26 @@ struct pause: std::suspend_always {
 ///Suspend point is object, which can be optionally awaited to suspend current coroutine and resume coroutines ready to be run
 /**
  * The main purpose of suspend_point is to be returned from a function. Such function can be co_awaited for result which
- * is carried by the instance. However as a side effect, it can also carry a one or more coroutine handles which are 
+ * is carried by the instance. However as a side effect, it can also carry a one or more coroutine handles which are
  * ready to be resumed. By co_await on a suspend_point causes to suspension of current coroutine and switch
- * execution to a coroutine associated with the finished function. 
- * 
+ * execution to a coroutine associated with the finished function.
+ *
  * Example: By setting a value to a promise causes that an awaiting coroutine becomes ready to run. Result of
  * operation which sets the promise is suspend_point which can be co_awaited. This causes that ready coroutine is resumed
- * 
+ *
  * @code
  * promise<int> prom=...;
  * suspend_point<bool> sp = prom(42); //set value to a promise
  * co_await sp; //switch to ready coroutine
  * @endcode
- * 
+ *
  * Awaiting on suspend point is optional. If the suspend point is not awaited, but discarded, the futher scheduling of
  * coroutines associated with the suspend point are processed as usual. Inside of coroutine, the execution is scheduled
  * to next suspend or return. In normal thread, the execution is performed immediately interrupting the current thread. By
  * capturing suspend point to a variable allows you to specify optimal place where to resume associated coroutines
- * 
- * 
- * Instance of suspend_point doesn't allocate a memory until count of ready coroutines cross threshold 4. 
+ *
+ *
+ * Instance of suspend_point doesn't allocate a memory until count of ready coroutines cross threshold 4.
  */
 template<typename RetVal>
 class suspend_point;
@@ -260,7 +260,7 @@ private:
 
         char _buffer[sizeof(std::coroutine_handle<>)*inline_count];
 
-        Allocator() = default;        
+        Allocator() = default;
         Allocator(Allocator &&a) = delete;
         Allocator(const Allocator &) = delete;
         std::coroutine_handle<> *allocate(std::size_t sz) {
@@ -319,9 +319,9 @@ public:
         return _list.empty();
     }
 
-    ///push coroutine handle to a suspend_point 
-    /** @param h handle to coroutine. 
-     * 
+    ///push coroutine handle to a suspend_point
+    /** @param h handle to coroutine.
+     *
      * @note function checks for null argument. In this case the argument is ignored. You don't need to check the argument for null
      */
     void push_back(std::coroutine_handle<> h) {
@@ -336,7 +336,7 @@ public:
     void push_back(suspend_point<void> &&x) {
         push_back(x);
     }
-    
+
     ///Pop one handle from the suspend_point instance.
     /**
      * This is used for symmetric transfer. Function in called to retrieve return value from await_suspend()
@@ -354,7 +354,7 @@ public:
     /**
      * The function respects state of current thread. If the coro_queue is active, then all coroutine in this suspend point
      * are put to the queue and not resumed. In normal thread, all coroutines are resumed
-     * 
+     *
      * In a coroutine, you need to use co_await on suspend point to resume all coroutines ready in this suspend_point instance
      */
     void flush() {
@@ -378,7 +378,7 @@ public:
      *  prepares coroutines to current thread's queue, then suspends current coroutine and
      *  then resumes the first coroutine. Then other coroutines are resumed and finally
      *  suspended coroutine is resumed
-     * 
+     *
      *  @note If there is a coroutine in current thread's queue, it is resumed first similar to how pause() works
      */
     std::coroutine_handle<> await_suspend(std::coroutine_handle<> h) {
@@ -394,10 +394,10 @@ template<typename X>
 class suspend_point: public suspend_point<void> {
 public:
     ///Constructs empty suspend point, but set its value
-    suspend_point(X val)        
+    suspend_point(X val)
         :value(std::move(val)) {}
     ///Constructs suspend point by setting a value of untyped suspend point
-    suspend_point(suspend_point<void> &&src, X val)    
+    suspend_point(suspend_point<void> &&src, X val)
         :suspend_point<void>(std::move(src)), value(std::move(val)) {}
 
     ///return value
@@ -423,7 +423,7 @@ protected:
  */
 template <typename Fn>
 inline auto coro_queue::create_suspend_point(Fn &&fn)
-{    
+{
     if (is_active()) {
         auto sz = instance->_queue.size();
         using ret_v = decltype(fn());
