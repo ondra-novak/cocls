@@ -65,7 +65,7 @@ public:
         }
     }
 
-    /// Repares the awaiter for resumption and returns coroutine handle to be resumed
+    /// Prepares the awaiter for resumption and returns coroutine handle to be resumed
     /**
      * THis function is called during await_suspend() when a coroutine is being suspended. The
      * function returns handle of coroutine to resume. This helps to transfer execution by a
@@ -74,6 +74,9 @@ public:
      *
      * If the awaiter is not associated with a coroutine, its function is called directly and
      * then await_suspend() is left without switching to a coroutine
+     *
+     * @note works similar as resume_handle_or_null() but it can return noop_coroutine(), if there
+     * is no coroutine to resume. 
      **/
     std::coroutine_handle<> resume_handle() noexcept {
         if (_resume_fn) {
@@ -85,6 +88,29 @@ public:
                 //this coroutine is being suspended, so retrieve next queued coroutine and resume it
                 return coro_queue::resume_handle_next();
             }
+        } else {
+            return std::coroutine_handle<>::from_address(_handle_addr);
+        }
+    }
+
+    /// Prepares the awaiter for resumption and returns coroutine handle to be resumed
+    /**
+     * THis function is called during await_suspend() when a coroutine is being suspended. The
+     * function returns handle of coroutine to resume. This helps to transfer execution by a
+     * symmetric transfer (without adding a stack level), which is much faster than classic
+     * transfer.
+     *
+     * If the awaiter is not associated with a coroutine, its function is called directly and
+     * then await_suspend() is left without switching to a coroutine
+     * 
+     * @note works similar as resume_handle() but it can return null coroutine handle, if there
+     * is no coroutine to resume. 
+     **/
+    std::coroutine_handle<> resume_handle_or_null() noexcept {
+        if (_resume_fn) {
+            std::coroutine_handle<> h;
+            _resume_fn(this, _handle_addr, h);
+            return h;
         } else {
             return std::coroutine_handle<>::from_address(_handle_addr);
         }
@@ -103,7 +129,7 @@ public:
      * @param chain holds chain
      * @return count of released awaiters (including skipped)
      */
-    static std::size_t resume_chain(awaiter_collector &chain) {
+    static suspend_point<std::size_t> resume_chain(awaiter_collector &chain) {
         //acquire memory order, we need to see modifications made by other thread during registration
         //this is first operation of the thread of awaiters
         return resume_chain_lk(chain.exchange(nullptr, std::memory_order_acquire));
@@ -118,21 +144,22 @@ public:
      * @note It marks chain disabled, so futher registration are rejected with false
      * @see subscribe_check_ready()
      */
-    static std::size_t resume_chain_set_ready(awaiter_collector &chain, awaiter &ready_state) {
+    static suspend_point<std::size_t> resume_chain_set_ready(awaiter_collector &chain, awaiter &ready_state) {
         //acquire memory order, we need to see modifications made by other thread during registration
         //this is first operation of the thread of awaiters
         return resume_chain_lk(chain.exchange(&ready_state, std::memory_order_acquire));
     }
-    static std::size_t resume_chain_lk(awaiter *chain) {
-        std::size_t n = 0;
+    static suspend_point<std::size_t> resume_chain_lk(awaiter *chain) {
+        std::size_t count = 0;
+        suspend_point<void> ret;
         while (chain) {
             auto y = chain;
             chain = chain->_next;
             y->_next = nullptr;
-            y->resume();
-            n++;
+            ret.push_back(y->resume_handle_or_null());
+            ++count;
         }
-        return n;
+        return {std::move(ret), count};
     }
     ///subscribe this awaiter but at the same time, check, whether it is marked ready
     /**
@@ -312,33 +339,6 @@ inline void co_awaiter<promise_type>::sync() noexcept  {
     }
 }
 
-///Suspend point - place where would be good idea to co_await result
-/**
- * Result of this type is optionally co_awaited, which can
- * bring some benefits. Typically by co_awaiting the
- * result helps to associated coroutine to be executed earlier.
- *
- * You can "switch to" the associated coroutine.
- *
- * However you can also ignore return value or retrieve just
- * actual result without co_awaiting, which performs
- * a default action. This is also only awailable option in 
- * non-coroutine world
- *
- *
- * @tparam RetVal return value - type of value wrapped into
- * suspend point to be retrieved
- * @tparam Impl class which implements this suspend_point. Each
- * class can use different implementation and support different
- * return values.
- *
- * This class is incomplette. Each implementation comes as
- * specifalization.
- *
- *
- */
-template<typename RetVal, typename Impl>
-class suspend_point;
 
 
 }

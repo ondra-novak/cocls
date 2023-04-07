@@ -30,7 +30,7 @@ int main(int, char **) {
 
     cocls::future<int> fut;
     auto coro = coro_test(sch, fut.get_promise());
-    pool->run_detached(std::move(coro));
+    pool->run(coro.detach());
     int result = fut.wait();
     std::cout << "Result:" << result << std::endl;
 

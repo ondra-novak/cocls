@@ -53,10 +53,6 @@ protected:
 
 public:
 
-    friend class suspend_point<void, mutex>;
-
-
-
     ///construct a mutex
     /**
      * Mutex can't be copied or moved
@@ -88,7 +84,16 @@ public:
          * immediately transfer to new owner. Current coroutine is suspended and
          * pushed to the resume queue (like pause())
          */
-        suspend_point<void, mutex> release();
+        suspend_point<void> release() {
+            suspend_point<void> ret;
+            mutex *mx = _ptr.release();
+            if  (mx) {
+                mx->unlock([&](awaiter *awt) {
+                    ret.push_back(awt->resume_handle_or_null());
+                });
+            }
+            return ret;
+        }
 
         ///Returns true, if you still owns the mutex (not released)
         /**
@@ -105,7 +110,6 @@ public:
     protected:
         ownership(mutex *mx):_ptr(mx) {}
         friend class mutex;
-        friend class suspend_point<void, mutex>;
         std::unique_ptr<mutex, ownership_deleter> _ptr;
     };
 
@@ -238,30 +242,6 @@ protected:
 
 };
 
-template<>
-class suspend_point<void, mutex>: public std::suspend_always {
-public:
-    suspend_point(mutex::ownership &&own):_own(std::move(own)) {}
-    std::coroutine_handle<> await_suspend(std::coroutine_handle<> h) {
-        mutex *mx = _own._ptr.release();
-        if  (mx) {
-            mx->unlock([&](awaiter *awt) {
-                coro_queue::resume(h);
-                h = awt->resume_handle();
-            });
-        }
-        return h;
-    }
-protected:
-    mutex::ownership _own;
-};
-
-suspend_point<void, mutex> mutex::ownership::release() {
-    return suspend_point<void, mutex>(std::move(*this));
 }
-
-}
-
-
 
 #endif /* SRC_cocls_MUTEX_H_ */

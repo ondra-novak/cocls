@@ -58,7 +58,7 @@ int main(int, char **) {
     {
         cocls::promise<int> p;
         auto f = co_test2( p, 34,std::this_thread::get_id(), false);
-        pool.resolve(p,34);
+        pool.run(p(34));
         f.join();
     }
 

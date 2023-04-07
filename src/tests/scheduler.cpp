@@ -44,7 +44,7 @@ int main(int, char **) {
 
     cocls::future<int> fut;
     auto coro = coro_test(sch, fut.get_promise());
-    pool.run_detached(std::move(coro));
+    pool.run(coro.detach());
     int result = fut.wait();
     CHECK_EQUAL(result,42);
     CHECK_EQUAL(var,15);

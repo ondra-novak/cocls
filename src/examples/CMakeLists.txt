@@ -42,5 +42,6 @@ add_executable (coroutine1 coroutine1.cpp)
 add_executable (coroutine2 coroutine2.cpp)
 add_executable (resume_in_thread_pool resume_in_thread_pool.cpp)
 add_executable (resume_in_parallel resume_in_parallel.cpp)
+add_executable (resume_point resume_point.cpp)
 
 

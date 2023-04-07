@@ -203,6 +203,33 @@ public:
         return enqueue_awaiter<AWT>(std::forward<Awaitable>(awt), *this);
     }
 
+    ///Run coroutines in thread pool
+    /**
+     * If you captured a suspend_point, you can resume prepared coroutines in a thread pool without suspension
+     * @param spt suspend point instance
+     * @return a value associated with suspend point.
+     */    
+    template<typename T>
+    T run(suspend_point<T> &spt) {
+        while (!spt.empty()) {
+            std::coroutine_handle<> h = spt.pop();
+            enqueue([h]{coro_queue::resume(h);});            
+        }
+        if constexpr(!std::is_void_v<T>) {
+            return spt;
+        }
+    }
+
+    ///Run coroutines in thread pool
+    /**
+     * If you captured a suspend_point, you can resume prepared coroutines in a thread pool without suspension
+     * @param spt suspend point instance
+     * @return a value associated with suspend point.
+     */    
+    template<typename T>
+    T run(suspend_point<T> &&spt) {
+        return run(spt);
+    }
 
     ///Transfer coroutine to the thread pool
     /**
@@ -257,49 +284,26 @@ public:
             });
         };
     }
-    ///Resolve promise in thread
-    /** Allocates thread and resolves promise in it. If the
-     * associated coroutine is resumed, it is resumed in this allocated thread
-     * @param t promise
-     * @param args arguments
-     *
-     * @note if the promise t is not valid, no thread is allocated
-     */
-    template<typename T, typename ... Args>
-    void resolve(promise<T> &t, Args && ... args) {
-        if (t) run_detached([p = t.bind(std::forward<Args>(args)...)]() mutable{
-            p();
-        });
-    }
 
-
-    ///Run coroutine async
+    ///start async coroutine in the thread pool
     /**
-     * @param coro coroutine to run
-     * @return future which resolves when coroutine ends
+     * @param fn asynchronous coroutine
+     * @return future object which captures a result
+     * 
+     * @note if you need to start async<> in thread pool without returning the future<>, you
+     * can simply call run(fn.detach()) 
      */
     template<typename T>
-    future<T> run(async<T> &&coro) {
+    future<T> run(async<T> &fn) {
         return [&](auto promise) {
-            enqueue([promise = std::move(promise), coro = std::move(coro)]()mutable{
-                coro.start(promise);
-            });
+            run(fn.start(promise));
         };
     }
 
-    ///Runs coroutine async, discard future
-    /**
-     * @param coro coroutine to run
-     * @param args optional arguments passed to resumption policy.
-     */
     template<typename T>
-    void run_detached(async<T> &&coro) {
-        enqueue([coro = std::move(coro)]() mutable {
-           coro.detach();
-        });
+    future<T> run(async<T> &&fn) {
+        return run(fn);
     }
-
-
 
     struct current {
 

@@ -118,9 +118,9 @@ public:
 
         std::coroutine_handle<> unblock_future() {
 
-            if (done()) return _awaiting(drop).resume_handle();
-            else if (_exp) return _awaiting(_exp).resume_handle();
-            else return _awaiting(std::move(*_ret)).resume_handle();
+            if (done()) return _awaiting(drop).pop();
+            else if (_exp) return _awaiting(_exp).pop();
+            else return _awaiting(std::move(*_ret)).pop();
         }
 
     public:

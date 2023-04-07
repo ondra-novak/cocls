@@ -38,12 +38,10 @@ class signal {
     struct state { // @suppress("Miss copy constructor or assignment operator")
         awaiter_collector _chain;
         storage_type *_cur_val = nullptr;
+        std::optional<storage_type> _value_storage;
 
-
-        void notify_awaiters() {
-            coro_queue::install_queue_and_call([&]{
-                awaiter::resume_chain(_chain);
-            });
+        suspend_point<std::size_t> notify_awaiters() {
+            return awaiter::resume_chain(_chain);
         }
 
         ~state() {
@@ -85,45 +83,59 @@ public:
         /**
          * @param args arguments used to construct value (using constructor). The
          * value is destroyed before return.
+         * @return suspend point which can be co_awaited in a coroutine. By co_awaiting the result
+         * causes transfering execution to the awaiting emitters. It also returns count of
+         * awaiting coroutines as result. In normal thread, you can simply discard the result
+         * which suspends the thread executions and immediately resumes the awaiting coroutines
          *
-         * @note the function returns after all awaiting coroutines processed the value
-         *
-         * @note the function is not MT-Safe, use proper synchronization to achieve mt-safety
+         * @note the function is not MT-Safe, use proper synchronization to achieve mt-safety. Remember
+         * you need to protect the returned suspend point as well.
          */
         template<typename ... Args>
         CXX20_REQUIRES(std::is_constructible_v<storage_type, Args...> )
-        void operator()(Args && ... args) const {
-            base_type v(std::forward<Args>(args)...);
-            _state->_cur_val = &v;
-            _state->notify_awaiters();
+        suspend_point<std::size_t> operator()(Args && ... args) const {
+            _state->_value_storage.emplace(std::forward<Args>(args)...);
+            _state->_cur_val = &(*_state->_value_storage);
+            return _state->notify_awaiters();
         }
 
         ///wake up all awaiters and pass value as rvalue reference
         /**
          * @param val value to broadcast to all awaiters
+         * @return suspend point which can be co_awaited in a coroutine. By co_awaiting the result
+         * causes transfering execution to the awaiting emitters. It also returns count of
+         * awaiting coroutines as result. In normal thread, you can simply discard the result
+         * which suspends the thread executions and immediately resumes the awaiting coroutines
          *
-         * @note the function returns after all awaiting coroutines processed the value
-         *
-         * @note the function is not MT-Safe, use proper synchronization to achieve mt-safety
+         * @note the function is not MT-Safe, use proper synchronization to achieve mt-safety.Remember
+         * you need to protect the returned suspend point as well.
          *
          */
-        void operator()(rvalue_param val) const {
-            _state->_cur_val = &val;
-            _state->notify_awaiters();
+        suspend_point<std::size_t> operator()(rvalue_param val) const {
+            _state->_value_storage.emplace(std::move(val));
+            _state->_cur_val = &(*_state->_value_storage);
+            return _state->notify_awaiters();
         }
 
         ///wake up all awaiters and pass value as lvalue reference
         /**
          * @param val value to broadcast to all awaiters
+         * @return suspend point which can be co_awaited in a coroutine. By co_awaiting the result
+         * causes transfering execution to the awaiting emitters. It also returns count of
+         * awaiting coroutines as result. In normal thread, you can simply discard the result
+         * which suspends the thread executions and immediately resumes the awaiting coroutines
          *
-         * @note the function returns after all awaiting coroutines processed the value
-         *
-         * @note the function is not MT-Safe, use proper synchronization to achieve mt-safety
+         * @note the function is not MT-Safe, use proper synchronization to achieve mt-safety.Remember
+         * you need to protect the returned suspend point as well.
+         * 
+         * @note This function doesn't store the value. It just stores reference to the value. Ensure that
+         * value remains valid until the all emitters are notified. This can be achieved by discarding the
+         * return value or using co_await on it.
          *
          */
-        void operator()(lvalue_param val) const {
+        suspend_point<std::size_t> operator()(lvalue_param val) const {
             _state->_cur_val = &val;
-            _state->notify_awaiters();
+            return _state->notify_awaiters();
         }
 
         ///you can convert collector to signal object
@@ -134,7 +146,7 @@ public:
 
     public:
         std::shared_ptr<state> _state;
-
+        
     };
 
     ///awaitable object - you can co_await on it

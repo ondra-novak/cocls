@@ -145,7 +145,7 @@ public:
      * @retval false no coroutine awaited, value has been placed to queue
      */
     template<typename ... Args>
-    suspend_point<bool, future<T> > push(Args && ... args) {
+    suspend_point<bool> push(Args && ... args) {
         std::unique_lock lk(_mx);
         if (!_awaiters.empty()) {
             promise<T> p = std::move(_awaiters.front());
@@ -154,7 +154,7 @@ public:
             return p(std::forward<Args>(args)...);
         } else {
             _queue.emplace(std::forward<Args>(args)...);
-            return {};
+            return false;
         }
 
     }
@@ -220,9 +220,9 @@ public:
      * @retval true success
      * @retval false nobody is awaiting
      */
-    suspend_point<bool, future<T> > unblock_pop(std::exception_ptr e) {
+    suspend_point<bool> unblock_pop(std::exception_ptr e) {
         std::unique_lock lk(_mx);
-        if (_awaiters.empty()) return {};
+        if (_awaiters.empty()) return false;
         promise<T> p = std::move(_awaiters.front());
         _awaiters.pop();
         lk.unlock();
@@ -334,9 +334,9 @@ public:
      *
      *
      */
-    suspend_point<bool, future<void> > unblock_push(std::exception_ptr e) {
+    suspend_point<bool> unblock_push(std::exception_ptr e) {
         std::unique_lock lk(this->_mx);
-        if (_blocked.empty()) return {};
+        if (_blocked.empty()) return false;
         auto front = std::move(_blocked.front());
         _blocked.pop();
         lk.unlock();

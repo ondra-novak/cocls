@@ -46,35 +46,35 @@ public:
         if (_h) _h.destroy();
     }
 
-    ///Starts the coroutine by converting it to future. Allows to initialize resumption policy
+    ///Starts the coroutine by converting it to future.
     /**
-     * The function is equivalent to converting coroutine to the future<T> directly. However
-     * this function allows you to initialize resumption policy by passing arguments
-     *
      * @return future object
      */
     future<T> start() {
-        return future<T>(std::move(*this));
+        return [&](auto promise){
+            start(promise);
+        };
     }
 
     ///Starts the coroutine, registers promise, which is resolved once the coroutine finishes
     /**
      * This is useful, when you have a promise and you need to resolve it by this coroutine.
        @param p promise to resolve. The promise is claimed by this call
+       @return function returns suspend_point which can be optionally co_awaited which 
+            allows to transfer execution to the coroutine by suspending current coroutine
      * @retval true sucefully started, promise was claimed
      * @retval false failed to claim the promise, the coroutine remains suspended
      */
-    bool start(cocls::promise<T> &p) {
+    suspend_point<bool> start(cocls::promise<T> &p) {
         async_promise<T> &promise = _h.promise();
         promise._future = p.claim();
         if (promise._future) {
-            start_coro();
-            return true;
+            return {start_coro(),true};
         }  else {
             return false;
         }
     }
-    bool start(cocls::promise<T> &&p) {
+    suspend_point<bool> start(cocls::promise<T> &&p) {
         return start(p);
     }
 
@@ -82,9 +82,15 @@ public:
     /**
      * Allows to run coroutine detached. Coroutine is not connected
      * with any future variable, so result (and exception) is ignored
+     * @return function return suspend_point<void> which can be awaited.
+     * By awaiting on it causes that coroutine is actually started. 
+     * If the suspend point is discarded, the coroutine is started as
+     * expected for current thread. For normal thread, the coroutine
+     * is started immediately during destruction of suspend_point. For
+     * coro-thread, the coroutine is scheduled in the queue
      */
-    void detach() {
-        start_coro();
+    suspend_point<void> detach() {
+        return start_coro();
     }
 
     ///Awaiter which allows to co_await the async<T> coroutine
@@ -127,10 +133,12 @@ public:
 
 
 protected:
-    void start_coro() {
+    suspend_point<void> start_coro() {
         assert("There is no coroutine to start" && _h != nullptr);
         auto h = std::exchange(_h,{});
-        coro_queue::resume(h);
+        suspend_point<void> ret;
+        ret.push_back(h);
+        return ret;
     }
 
 
@@ -199,8 +207,6 @@ public:
 #else
         template<typename Prom>
         std::coroutine_handle<> await_suspend(std::coroutine_handle<Prom> me) noexcept {
-            //store noop coroutine handle for later usage
-            std::coroutine_handle<> n = std::noop_coroutine();
             //retrieve promise object
             async_promise &p = me.promise();
             //retrieve future ponter, it can be nullptr for detached coroutine
@@ -208,11 +214,11 @@ public:
             //set future resolved - this must be done before frame is destroyed
             //as there can be still connection to the frame before resolution
             //once the future is resolved, there should be no connection at all.
-            auto h = f ? f->resolve_resume():n;
+            suspend_point<void> sp = f ? f->resolve():suspend_point<void>();
             //now we can destroy our frame
             me.destroy();
             //return handle returned by resolve();
-            return h;
+            return sp.pop();
         }
 #endif
     };

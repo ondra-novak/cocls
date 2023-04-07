@@ -330,53 +330,82 @@ Pokud Váš kód řídí korutiny manuálně a chcete využít tuto vlastnost, n
 
 **Poznámka** - odlišení *coro mode* od *normal mode* řeší situace, ve kterých by mohlo dojít k naskládání rámců korutin na aktuálním zásobníku. Navíc pokud by došlo k pokusu obnovení korutiny, která již má svůj rámec aktivní, je toto považováno za chybu a výsledkem je UB. Obnovování korutin v režimu *coro mode* znemožňuje naskládání rámci na sebe
 
-**Výjimka** - některé objekty vyžadují použití volání přímého `h.resume()`, pak k částečnému naskládání dojít může. Typicky pokud se používá synchroní přístup v rámci korutiny, například synchronní generátor, nebo `signal::collector`
+### Explicitní řízení korutin
 
-### Využití symmetrického transferu
+Výše popsaný systém platí v případě, že žádné explicitní řízení korutin není uplatňováno. Knihovna však nabízí další možnosti, jak plánovat běh korutin. 
 
-Použití fronty umožňuje v některých situacích využít symmetrický transfer. To znamená, že když jedna korutina je uspána, může jiná korutina, připravná ve frontě, být obnovena v rámci jedné operace. Překladače často umí takto rychle přepínat mezi korutinami.
+Lze rozlišit celkem tři stavy korutiny
 
-### Funkce pause()
+* **běžící (running)** - korutina právě provádí svůj kód v některém vlákně
+* **uspaná (suspended)** - korutina je uspaná a čeká na událost, která ji probudí.
+* **připravená (ready)** - událost, na kterou korutina čekala, již nastala, korutina je připravená k běhu, avšak nemá přidělené vlákno.
 
-Funkce pause() uspí aktuální korutinu a obnoví první korutinu připravenou ve frontě. Současná korutina je zároveň vložena do fronty aby byla obnovena příště
+Výchozí řízení korutin popsané výše předpokládá přidělování právě jednoho vlákna. Je to z důvodu bezpečnosti, s ohledem na to, že většina kódu nebývá navržena pro MT bezpečnost. V rámci jednoho vlákna je vždy jedna korutina **běžící** a ostatní **připravené**
+
+#### Funkce pause()
+
+Funkce pause() je ve skutečnosti konstruktor awaiteru, na který lze čekat přes `co_await`. To je hlavní význam této funkce
 
 ```
 co_await pause();
 ```
 
-Pokud v aktuálním vlákně není připravena žádná korutina k běhu, pak funkce nedělá nic. Již řazené korutiny se obnovuji v pořadí zařazení. Pokud víc korutin opakovaně používá tuto funkci, pak se exekuce střídá v pořadí jejich prvotního zařazení (fronta)
+Celý zápis způsobí, že běžící korutina je uspána ale ihned je přesunuta do stavu **připravená**, zařazená na konec fronty. Jiná korutina ve frontě připravených korutin je spuštěna a pokračuje v běhu. Řízení je předáno pomocí symetrického transferu. Tímto způsobem lze na jednom vlákně provádět ko-operativní multitasking. Pokud všechny korutiny v tomto vlákně občas zavolají `co_await pause();` budou se na aktuálním vlákně střída dokola.
 
-### Přepnutí do korutiny pomocí `suspend_point`
+#### Ruční předání řízení a objekt suspend_point<>
 
-Třída `suspend_point` je návratovou hodnotou některých funkcí. Jedná se o šablonu, která si nese v prvním parametru návratovou hodnotu a v druhém parametru pak většinou označení toho, kdo třídu implementuje. Každý vlastník může implementovat jinak dle potřeby
+Některé funkce v knihovně vrací objekt `suspend_point<T>`. Název třídy odkazuje na nutnost uspat aktuální korutinu, aby bylo možné spustit jinou korutinu. S tímto objektem se tedy váže množina korutin (žádná, jedna, nebo i více), které po dokončení volané funkce (ta již vrací `suspend_point<>`) byly probuzeny a nyní jsou ve stavu **připravené**. Pokud na instanci `suspend_point<>` aplikujeme `co_await`, aktuální korutina je přerušena a řízení je předáno korutině, nebo korutinám přednostně těm, které se staly připravené zavoláním oné funkce.
 
-```
-suspend_point<bool, future<int> > result = promise(42);
-```
-
-Funkce nebo metody které vrací `suspend_point` označují místo, na kterém by bylo vhodné provést `co_await`. Výsledkem operace je pak hodnota typu, který je v prvním parametru.
+Příkladem může být `mutex`. Jakmile korutina odemkne mutex (vzdá se jeho vlastnictví), jiná korutina, která čeká na přidělení vlastnictví je nyní **připravená** k běhu. Funkce, která uvolňuje vlastnictví, vrací `suspend_point<void>`. Pokud instanci této třídy použijeme na `co_await`, dojde k přepnutí do korutiny, která je novým vlastníkem. Pokud tak neuděláme a instanci `suspend_point<void>` je zahozena, pak je připravená korutina vložena do fronty připravených korutin a aktuálně běžící korutina pokračuje v běhu bez přerušení. Proto aby připravená korutina mohla běžet, musí současná korutina být ukončena nebo přerušena
 
 ```
-bool val = co_await result;
+    ownership own = co_await mx.lock(); //získej vlastnictví
+    // do something
+    co_await own.release();         //předej vlastnictví, spusť nového vlastníka
 ```
 
-Rozdíl od `future<T>` nebo jiných awaiterů, použití `co_await` **zde není povinné**, a  k výsledku lze přistoupit přímo
+Podobně lze předávat řízení korutině, která čeká na hodnotu `future<T>`. Pokud jiná korutina nastaví svázanou `promise<T>`, pak může na její výsledek zavolat `co_await` a tím předat řízení čekající korutině.
 
 ```
-bool val = result
+    promise<int> p = ... ; // máme promisu
+    co_await p(42);     // nastav výsledek a předej řízení
 ```
 
-nebo ve zkratce
+Narozdíl o `future<T>` (a nějakých dalších awaiterů), čekání na `suspend_point` je nepovinné. Pokud je proměnná zahozena, pak se čekající korutiny zařadí do fronty v aktuálním vlákně. 
 
+#### Suspend point v normálním vlákně (mimo korutiny)
+
+V případě, že pracujeme se `suspend_point` mimo korutinu, pak nelze použít `co_await`. Je tedy normální objekt zahodit, čímž dojde k okamžitému přerušení vlákna a spuštění čekajících korutin. Nicméně i v tomto případě si můžeme vybrat místo, kde k tomu dojde. Například můžeme chtít předtím odemknout nějaký zámek, který nechceme držet zamknutí počas toho, co je aktuální vlákno uspáno ve prospěch čekajících korutin
+
+``` 
+{
+    std::unique_lock lk(_mx);
+    //...
+    promise<int> p = ....;
+    suspend_point<bool> pt = p(42); //nastav futuru
+    lk.unlock();                    //odekmni zámek
+}                                   //proměnná pt je nyní zničena, čekající korutina se v tomto bodě spustí.
 ```
-bool val = promise(42)
+
+#### Manipulace s objektem suspend_point<>
+
+Objekt `suspend_point<>` lze přesouvat a přerušení běhu kódu kvůli čekajícím korutinám naplánovat kamkoliv potřebujeme. Například můžeme pro
+čekající korutiny spustit vlákno.
+```
+    promise<int> p = ....;
+    suspend_point<bool> pt = p(42);
+    std::thread thr([pt = std::move(pt)]{
+        pt.flush();     //explicitní spuštění
+    });
+    thr.detach();
 ```
 
-Použití `co_await` však dává korutině možnost předat řízení korutině, která se provedenou operací se stala připravená ke spuštění. Například, pokud dojde k nastavení promise (zde `p`) na nějakou hodnotu, svázaná korutina čekající na tuto hodnotu je ihned připravená ke spuštění. V rámci *coro_mode* by se však zařadila do fronty připravených korutin a spustila by se až teprve až se současná korutina uspí. Navíc pokud je ve frontě více korutin, bude se postupovat popořadě. To se stane v případě, že `suspend_point` ignorujeme a vyzvedneme si výsledek přímo, nebo jej plně zahodíme. Použitím `co_await` na určeném `suspend_point` se současná korutina uspí a korutina připravená k běhu se probudí a může ihned reagovat na nový stav.
+Objekt lze přesunout i do korutiny, kde pak lze zavolat `co_await`
 
-Výsledek ve formě `suspend_point` nabízí
-* `promise` při nastavování hodnoty, přičemž hodnotou je `bool`. **True** znamená, že korutina se spustila, **false** znamená, že promise již není svázána (pak k uspání nedošlo). Pokud `co_await`ujeme tento `suspend_point` pak se probudí korutina, která čekala na nastavenou hodnotu.
-* `mutex` a to ve funkci `release()` u pod-objektu `ownership`. To umožňuje uvolnit vlastnictví a ihned přepnout do korutiny, která je novým vlastníkem zámku.
+#### Spouštění async<> přes suspend_point<>
+
+Korotina `async<>` pro některé způsoby spouštění vrací `suspend_point<void>`. Samotné spuštění totiž korutinu nastaví do režimu **připravená** a teprve přes `suspend_point<void>` může být korutina spuštěna. N
+
 
 
 ## Awaiter

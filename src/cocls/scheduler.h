@@ -200,7 +200,7 @@ public:
         auto p = remove(id);
         if (p) {
             if (_glob_state.has_value() && _glob_state->_pool) {
-                _glob_state->_pool->resolve(p, e);
+                _glob_state->_pool->run(p(e));
             } else {
                 p(e);
             }
@@ -400,7 +400,7 @@ protected:
                using T = std::decay_t<decltype(x)>;
                if constexpr(std::is_same_v<T, promise>) {
                    if constexpr(have_pool) {
-                       pool->resolve(x);
+                       pool->run(x());
                    } else {
                        x();
                    }
@@ -438,8 +438,10 @@ protected:
         if (_glob_state.has_value()) return;
         _glob_state.emplace();
         _glob_state->_pool = &pool;
-        _glob_state->_fut << [&]{
-            return pool.run(worker_coro<true>(_glob_state->_stp.get_token()));
+        _glob_state->_fut << [&]()->future<void>{
+            return [&](auto promise) {
+                pool.run(worker_coro<true>(_glob_state->_stp.get_token()).start(promise));
+            };
         };
     }
 

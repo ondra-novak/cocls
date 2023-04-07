@@ -476,7 +476,6 @@ public:
 protected:
     friend class co_awaiter<future<T> >;
     friend class promise<T>;
-    friend class suspend_point<bool, future<T> >;
 
     template<typename A>
     friend class async_promise;
@@ -513,66 +512,9 @@ protected:
         _state = State::exception;
     }
 
-    void resolve() {
-        awaiter::resume_chain_set_ready(_awaiter, awaiter::disabled);
+    auto resolve() {
+        return awaiter::resume_chain_set_ready(_awaiter, awaiter::disabled);
     }
-    std::coroutine_handle<> resolve_resume() {
-        auto n = std::noop_coroutine();
-        awaiter *x = _awaiter.exchange(&awaiter::disabled, std::memory_order_release);
-        while (x != nullptr) {
-            auto a = x;
-            x = x->_next;
-            a->_next = nullptr;
-            auto h = a->resume_handle();
-            if (h && h != n) {
-                while (x != nullptr) {
-                    auto b = x;
-                    x = x->_next;
-                    b->_next = nullptr;
-                    b->resume();
-                }
-                return h;
-            }
-        }
-        return n;
-    }
-};
-
-///implementation of suspend point for promise;
-template<typename T>
-class suspend_point<bool, future<T> > {
-    friend class promise<T>;
-    suspend_point(future<T> *to_resume) :_to_resume(to_resume) {}
-public:
-    suspend_point()=default;
-    suspend_point(const suspend_point &) = delete;
-    suspend_point &operator=(const suspend_point &) = delete;
-
-    bool await_ready() const noexcept {return !_to_resume;}
-    std::coroutine_handle<> await_suspend(std::coroutine_handle<> h)  noexcept {
-        _result =  _to_resume != nullptr;
-        coro_queue::resume(h);
-        auto f =std::exchange(_to_resume, nullptr);
-        return f->resolve_resume();
-    }
-    bool await_resume() const noexcept {
-        return _result;
-    }
-    std::coroutine_handle<> resume_handle() {
-        auto f =std::exchange(_to_resume, nullptr);
-        return f->resolve_resume();
-    }
-    ~suspend_point() {
-        if (_to_resume) _to_resume->resolve();
-    }
-
-    operator bool() const {
-        return _to_resume != nullptr;
-    }
-
-protected:
-    future<T> *_to_resume = nullptr;
-    bool _result = false;
 
 };
 
@@ -612,7 +554,7 @@ public:
     ///promise can be assigned by move
     promise &operator=(promise &&other) {
         if (this != &other) {
-            drop();
+            set_value(drop);
             _owner = other.claim();
         }
         return *this;
@@ -630,7 +572,7 @@ public:
      * @note return value is awaitable (recommended to co_await result in coroutine)
      */
     template<typename ... Args>
-    suspend_point<bool, fut> operator()(Args && ... args) {
+    suspend_point<bool> operator()(Args && ... args) {
         return set_value(std::forward<Args>(args)...);
     }
 
@@ -644,27 +586,32 @@ public:
      * @note return value is awaitable (recommended to co_await result in coroutine)
      */
     template<typename ... Args>
-    suspend_point<bool, fut> set_value(Args && ... args) {
+    suspend_point<bool> set_value(Args && ... args) {
         auto m = claim();
         if (m) {
             m->set(std::forward<Args>(args)...);
+            return suspend_point<bool>(m->resolve(), true);
         }
-        return suspend_point<bool, fut>(m);
+        return suspend_point<bool>(false);
     }
 
     ///Set value DropTag to drop promise manually
     /**
       * @note return value is awaitable (recommended to co_await result in coroutine)
       * */
-    suspend_point<bool, fut> set_value(DropTag) {
-        return suspend_point<bool, fut>(claim());
+    suspend_point<bool> set_value(DropTag) {
+        auto m = claim();
+        if (m) {
+            return suspend_point<bool>(m->resolve(), true);
+        }
+        return suspend_point<bool>(false);
     }
 
     ///Sets exception
     /**
       * @note return value is awaitable (recommended to co_await result in coroutine)
       * */
-    suspend_point<bool, fut> set_exception(std::exception_ptr e) {
+    suspend_point<bool> set_exception(std::exception_ptr e) {
         return set_value(e);
     }
 
@@ -730,11 +677,6 @@ protected:
     static std::coroutine_handle<> resolve_resume(future<T> *what) {
         return what->resolve_resume();
     }
-
-    suspend_point<bool, fut> drop() {
-        return suspend_point<bool, fut>(claim());
-    }
-
 
     mutable std::atomic<future<T> *>_owner;
 
