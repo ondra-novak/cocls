@@ -395,7 +395,7 @@ protected:
                using T = std::decay_t<decltype(x)>;
                if constexpr(std::is_same_v<T, promise>) {
                    if constexpr(have_pool) {
-                       pool->run(x());
+                       pool->resume(x());
                    } else {
                        x();
                    }
@@ -435,7 +435,7 @@ protected:
         _glob_state->_pool = &pool;
         _glob_state->_fut << [&]()->future<void>{
             return [&](auto promise) {
-                pool.run(worker_coro<true>(_glob_state->_stp.get_token()).start(promise));
+                pool.resume(worker_coro<true>(_glob_state->_stp.get_token()).start(promise));
             };
         };
     }

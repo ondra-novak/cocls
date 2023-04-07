@@ -295,7 +295,7 @@ public:
     template<typename T>
     future<T> run(async<T> &fn) {
         return [&](auto promise) {
-            run(fn.start(promise));
+            resume(fn.start(promise));
         };
     }
 
