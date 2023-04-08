@@ -44,7 +44,7 @@ cocls::future<void> worker_tp(int n, cocls::mutex &mx, cocls::thread_pool &pool)
     std::cout << "worker with thread_pool release " << n <<": Have mutex (thread_id = " << std::this_thread::get_id() << ")" << std::endl;
     co_await cocls::pause();
     std::cout << "worker with thread_pool release " << n <<": Releasing mutex (thread_id = " << std::this_thread::get_id() << ")" << std::endl;
-    pool.run(own.release());
+    pool.resume(own.release());
     std::cout << "worker with thread_pool release " << n <<": Finish work (thread_id = " << std::this_thread::get_id() << ")" << std::endl;
 
 }
