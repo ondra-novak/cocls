@@ -358,15 +358,17 @@ public:
      * In a coroutine, you need to use co_await on suspend point to resume all coroutines ready in this suspend_point instance
      */
     void flush() {
-        if (coro_queue::is_active()) {
-            while (!_list.empty()) {
-                coro_queue::resume(_list.back());
-                _list.pop_back();
+        if (!_list.empty()) {
+            if (coro_queue::is_active()) {
+                while (!_list.empty()) {
+                    coro_queue::resume(_list.back());
+                    _list.pop_back();
+                }
+            } else  {
+                coro_queue::install_queue_and_call([&]{
+                    flush();
+                });
             }
-        } else {
-            coro_queue::install_queue_and_call([&]{
-                flush();
-            });
         }
     }
     ///support for co_await
@@ -394,8 +396,10 @@ template<typename X>
 class suspend_point: public suspend_point<void> {
 public:
     ///Constructs empty suspend point, but set its value
-    suspend_point(X val)
-        :value(std::move(val)) {}
+    suspend_point(X val):value(std::move(val)) {}
+    ///Constructs empty suspend point, but set its value
+    suspend_point(std::coroutine_handle<> h, X val)
+        :suspend_point<void>(h),value(std::move(val)) {}
     ///Constructs suspend point by setting a value of untyped suspend point
     suspend_point(suspend_point<void> &&src, X val)
         :suspend_point<void>(std::move(src)), value(std::move(val)) {}

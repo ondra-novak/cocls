@@ -60,7 +60,7 @@ public:
     /**
      * This is useful, when you have a promise and you need to resolve it by this coroutine.
        @param p promise to resolve. The promise is claimed by this call
-       @return function returns suspend_point which can be optionally co_awaited which 
+       @return function returns suspend_point which can be optionally co_awaited which
             allows to transfer execution to the coroutine by suspending current coroutine
      * @retval true sucefully started, promise was claimed
      * @retval false failed to claim the promise, the coroutine remains suspended
@@ -69,7 +69,7 @@ public:
         async_promise<T> &promise = _h.promise();
         promise._future = p.claim();
         if (promise._future) {
-            return {start_coro(),true};
+            return start_coro(true);
         }  else {
             return false;
         }
@@ -83,7 +83,7 @@ public:
      * Allows to run coroutine detached. Coroutine is not connected
      * with any future variable, so result (and exception) is ignored
      * @return function return suspend_point<void> which can be awaited.
-     * By awaiting on it causes that coroutine is actually started. 
+     * By awaiting on it causes that coroutine is actually started.
      * If the suspend point is discarded, the coroutine is started as
      * expected for current thread. For normal thread, the coroutine
      * is started immediately during destruction of suspend_point. For
@@ -138,6 +138,12 @@ protected:
         auto h = std::exchange(_h,{});
         return suspend_point<void>(h);
     }
+    template<typename X>
+    suspend_point<X> start_coro(X &&val) {
+        assert("There is no coroutine to start" && _h != nullptr);
+        auto h = std::exchange(_h,{});
+        return suspend_point<X>(h, std::forward<X>(val));
+    }
 
 
 
@@ -173,7 +179,7 @@ public:
     }
     struct final_awaiter: std::suspend_always {
 
-#ifdef _MSC_VER     
+#ifdef _MSC_VER
 
         //BUG: Microsoft VC++ cannot properly work with final awaiter in symmetric transfer mode
         //because the return value is initialized inside of coroutine handle
@@ -196,7 +202,7 @@ public:
             ///if future is defined
             if (f) {
                 ///resolve it normally
-                f->resolve();    
+                f->resolve();
             }
             ///return false, coroutine will be destroyed
             return false;
