@@ -62,7 +62,7 @@ public:
     }
 
     ///merge coroutines from one suspend point to other (current)
-    constexpr suspend_point &operator<<(suspend_point &&other)  {
+    suspend_point &operator<<(suspend_point &&other)  {
         auto count = other._count_flag >> 1;
         if (other._count_flag & 1) [[unlikely]] {
             for (std::size_t i = 0; i < count; i++) {
