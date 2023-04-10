@@ -48,7 +48,7 @@ public:
      * @param h coroutine handle to include
     */
     constexpr suspend_point(std::coroutine_handle<> h):_count_flag(2) {
-        _inline._handles[0] = h.address();
+        _local._handles[0] = h.address();
     }
     ///move suspend point
     /** Suspend point is movable */
@@ -56,7 +56,7 @@ public:
         if (_count_flag & 1) [[unlikely]] {
             _ext = other._ext;
         } else {
-            _inline = other._inline;
+            _local = other._local;
         }
         other._count_flag = 0;
     }
@@ -71,7 +71,7 @@ public:
             delete [] other._ext._handles;
         } else {
             for (std::size_t i = 0; i < count; i++) {
-                add(other._inline._handles[i]);
+                add(other._local._handles[i]);
             }
         }
         other._count_flag = 0;
@@ -119,7 +119,7 @@ public:
         std::size_t idx = (_count_flag >> 1);
         if (idx) [[likely]] {
             _count_flag-=2;
-            void **from = (_count_flag & 0x1)?_ext._handles:_inline._handles;
+            void **from = (_count_flag & 0x1)?_ext._handles:_local._handles;
             return std::coroutine_handle<>::from_address(from[idx-1]);
         } else {
             return std::noop_coroutine();
@@ -198,7 +198,7 @@ protected:
     //for large amount of hansles, heap is used
     //for 3 internal handles + 1 size, total size of the object is 4xsizeof(pointer) = 32 on x64
     union {
-        InlineData _inline;
+        InlineData _local;
         ExtData _ext;
     };
 
@@ -240,7 +240,7 @@ protected:
             //if we are still below the capacity
             if (count < inline_count)  [[likely]] {
                 //just put handle
-                _inline._handles[count] = h;
+                _local._handles[count] = h;
                 //and increase counter (2 because shifted)
                 _count_flag += 2;
             } else {
@@ -248,7 +248,7 @@ protected:
                 //create array on heap
                 Ptr *nh = new Ptr[count * 2];
                 //copy content
-                std::copy(std::begin(_inline._handles), std::end(_inline._handles), nh);
+                std::copy(std::begin(_local._handles), std::end(_local._handles), nh);
                 //start using _ext, initialize it
                 _ext._handles = nh;
                 _ext._capacity = count*2;
@@ -262,7 +262,7 @@ protected:
 
     constexpr const Ptr *begin() const {
         if (_count_flag & 1) [[unlikely]] return _ext._handles;
-        else return _inline._handles;
+        else return _local._handles;
     }
 
     constexpr const Ptr *end() const {
