@@ -191,14 +191,13 @@ public:
      * but note that future<> is not movable, but future_coro<> is movable
      *
      */
-    future(async<T> &&coro):_awaiter(&awaiter::instance) {
-        auto p = get_promise();
-        coro.start(p);
-    }
+    future(async<T> &&coro):future(coro) {}
 
     future(async<T> &coro):_awaiter(&awaiter::instance) {
         auto p = get_promise();
-        coro.start(p);
+        auto h = coro.start_promise(p);
+        if (coro_queue::is_active()) h.resume();
+        else coro_queue::install_queue_and_resume(h);
     }
 
     ///Resolves future by a value
@@ -318,12 +317,12 @@ public:
                     throw value_not_ready_exception();
                 else
                     throw await_canceled_exception();
-            case State::exception: 
+            case State::exception:
                 std::rethrow_exception(_exception);
                 break;
             case State::value:
                 break;
-        }        
+        }
         if constexpr(!is_void) return _value;
 
     }

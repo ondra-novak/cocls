@@ -5,6 +5,7 @@
 #define SRC_cocls_AWAITER_H_
 
 #include "coro_queue.h"
+#include "suspend_point.h"
 
 #include <algorithm>
 #include <atomic>
@@ -99,7 +100,7 @@ public:
             auto y = chain;
             chain = chain->_next;
             y->_next = nullptr;
-            ret.push_back(y->resume());
+            ret << y->resume();
         }
         return ret;
     }

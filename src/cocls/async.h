@@ -52,7 +52,7 @@ public:
      */
     future<T> start() {
         return [&](auto promise){
-            start(promise);
+            start_promise(promise).resume();
         };
     }
 
@@ -66,17 +66,14 @@ public:
      * @retval false failed to claim the promise, the coroutine remains suspended
      */
     suspend_point<bool> start(cocls::promise<T> &p) {
-        async_promise<T> &promise = _h.promise();
-        promise._future = p.claim();
-        if (promise._future) {
-            return start_coro(true);
-        }  else {
-            return false;
-        }
+        auto r = start_promise(p);
+        if (r) return {r, true};
+        else return {false};
     }
     suspend_point<bool> start(cocls::promise<T> &&p) {
         return start(p);
     }
+
 
     ///Detach coroutine
     /**
@@ -133,16 +130,19 @@ public:
 
 
 protected:
-    suspend_point<void> start_coro() {
+    std::coroutine_handle<> start_coro() {
         assert("There is no coroutine to start" && _h != nullptr);
         auto h = std::exchange(_h,{});
-        return suspend_point<void>(h);
+        return h;
     }
-    template<typename X>
-    suspend_point<X> start_coro(X &&val) {
-        assert("There is no coroutine to start" && _h != nullptr);
-        auto h = std::exchange(_h,{});
-        return suspend_point<X>(h, std::forward<X>(val));
+    std::coroutine_handle<> start_promise(cocls::promise<T> &p) {
+        async_promise<T> &promise = _h.promise();
+        promise._future = p.claim();
+        if (promise._future) {
+            return start_coro();
+        }  else {
+            return nullptr;
+        }
     }
 
 
@@ -227,6 +227,7 @@ public:
 #endif
     };
 
+    friend class future<T>;
 
     std::suspend_always initial_suspend() noexcept {return {};}
     final_awaiter final_suspend() noexcept {return {};}

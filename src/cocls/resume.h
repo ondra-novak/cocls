@@ -97,7 +97,7 @@ template<typename T>
 auto parallel_resume(suspend_point<T> &&spt) {
     if (!spt.await_ready()) {
             std::thread thr([sp = suspend_point<void>(std::move(spt))]() mutable {
-                sp.flush();
+                sp.clear();
             });
             thr.detach();
     }
