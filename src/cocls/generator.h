@@ -121,7 +121,7 @@ public:
 
             if (done()) return _awaiting(drop);
             else if (_exp) return _awaiting(_exp);
-            else return _awaiting(std::move(*_ret));
+            else return _awaiting.set_reference(*_ret);
         }
 
     public:

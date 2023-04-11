@@ -127,12 +127,14 @@ public:
     using const_reference = std::add_lvalue_reference_t<std::add_const_t<value_type> >;
     static constexpr bool is_void = std::is_void_v<value_type>;
     using value_storage = std::conditional_t<is_void, int, value_type>;
+    using value_storage_ptr = std::add_pointer_t<std::conditional_t<is_void, int, value_type> >;
 
     using promise_type = async_promise<T>;
 
     enum class State {
         not_value,
         value,
+        value_ref,
         exception
     };
 
@@ -320,11 +322,13 @@ public:
             case State::exception:
                 std::rethrow_exception(_exception);
                 break;
+            case State::value_ref:
+                if constexpr(!is_void) return *_ptr;
+                break;
             case State::value:
+                if constexpr(!is_void) return _value;
                 break;
         }
-        if constexpr(!is_void) return _value;
-
     }
 
     ///retrieves result value (as reference)
@@ -341,10 +345,20 @@ public:
      */
     const_reference value() const {
         switch (_state) {
-            default: throw value_not_ready_exception();
-            case State::exception: std::rethrow_exception(_exception);throw;
+            default:
+                if (pending())
+                    throw value_not_ready_exception();
+                else
+                    throw await_canceled_exception();
+            case State::exception:
+                std::rethrow_exception(_exception);
+                break;
+            case State::value_ref:
+                if constexpr(!is_void) return *_ptr;
+                break;
             case State::value:
-                if constexpr(!is_void) return _value; else return ;
+                if constexpr(!is_void) return _value;
+                break;
         }
     }
 
@@ -482,6 +496,7 @@ protected:
 
     union {
         value_storage _value;
+        value_storage_ptr _ptr;
         std::exception_ptr _exception;
 
     };
@@ -502,6 +517,14 @@ protected:
             new(&_value) value_type(std::forward<Args>(args)...);
         }
         _state = State::value;
+    }
+
+    void set_ptr(T *ptr) {
+        assert("Future is ready, can't set value twice" && _state == State::not_value);
+        if constexpr(!is_void) {
+            _ptr = ptr;
+        }
+        _state = State::value_ref;
     }
 
 
@@ -533,6 +556,8 @@ class promise {
 public:
 
     using fut = future<T>;
+
+    using reference_value = std::conditional_t<std::is_void_v<T>,void *, std::add_lvalue_reference_t<T> >;
 
     ///construct empty promise - to be assigned
     promise():_owner(nullptr) {}
@@ -601,6 +626,15 @@ public:
     suspend_point<bool> set_value(DropTag) {
         auto m = claim();
         if (m) {
+            return suspend_point<bool>(m->resolve(), true);
+        }
+        return suspend_point<bool>(false);
+    }
+
+    suspend_point<bool> set_reference(reference_value x) {
+        auto m = claim();
+        if (m) {
+            m->set_ptr(&x);
             return suspend_point<bool>(m->resolve(), true);
         }
         return suspend_point<bool>(false);
