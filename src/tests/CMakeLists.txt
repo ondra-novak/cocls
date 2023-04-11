@@ -7,5 +7,4 @@ foreach (testFile ${testFiles})
     add_executable(${executable_name} ${testFile})
     target_link_libraries(${executable_name} ${STANDARD_LIBRARIES} )
     add_test(NAME ${executable_name} COMMAND ${executable_name})
-endforeach ()
-  
+endforeach () 

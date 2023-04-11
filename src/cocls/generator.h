@@ -85,7 +85,7 @@ public:
         //blocking flag for synchronous access - contains false when generator is pending
         std::atomic<bool> _block;
         //contains promise if called and there is a future waiting for result
-        promise<Ret> _awaiting;
+        promise<Ret &> _awaiting;
 
         //function is called when accessing synchronously
         /*
@@ -121,7 +121,7 @@ public:
 
             if (done()) return _awaiting(drop);
             else if (_exp) return _awaiting(_exp);
-            else return _awaiting.set_reference(*_ret);
+            else return _awaiting(*_ret);
         }
 
     public:
@@ -228,7 +228,7 @@ public:
         }
 
         //generate next item and prepare future
-        future<Ret> next_future() {
+        future<Ret &> next_future() {
             //check whether generator is idle (we can't access busy generator)
             assert("Generator is busy" && _caller == nullptr);
             //prepare future, retrieve promise
@@ -439,7 +439,7 @@ public:
      *    future<T>::result_of(generator)
      */
     template<typename ... Args>
-    future<Ret> operator()(Args && ... args) {
+    future<Ret &> operator()(Args && ... args) {
         if constexpr(arg_is_void) {
             static_assert(sizeof...(args) == 0, "The generator doesn't expect an argument");
             return _promise->next_future();
