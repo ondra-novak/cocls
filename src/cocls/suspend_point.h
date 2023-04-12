@@ -168,16 +168,23 @@ public:
         //ensure that current queue is active
         if (coro_queue::is_active()) [[likely]]  {
             std::coroutine_handle<> out = pop();
+            void *me_addr = h.address();
+            //check, whether my coroutine handle is also in the list (to avoid double insert)
+            bool me_included = false;            
             for (auto x: *this) {
+                me_included |= x == me_addr;
                 coro_queue::instance->push(std::coroutine_handle<>::from_address(x));
             }
-            coro_queue::instance->push(h);
+            //if not, include me.
+            if (!me_included) {
+                coro_queue::instance->push(h);
+            }
             clear_internal();
             return out;
         } else {
             //this can happen, when co_await is called outside of coro_queue framework
-            suspend_now();
-            return h;
+            return await_suspend(h);
+            
         }
     }
 

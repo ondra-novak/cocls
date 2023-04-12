@@ -373,16 +373,15 @@ public:
      * thrown now
      *
      * @note accessing the value is not MT-Safe.
+     * @note in debug build, using wait() is reported as an error. To override, use force_wait();
      */
     reference wait() {
         return co_awaiter<future<T> >(*this).wait();
     }
 
-
     ///Same as wait()
     /**@see wait() */
     decltype(auto) join() {return wait();}
-
 
 
     ///Synchronize with future, but doesn't pick value or explore its state
@@ -393,6 +392,17 @@ public:
     void sync() const noexcept {
         co_awaiter<future<T> >(*const_cast<future<T> *>(this)).sync();
     }
+
+   ///wait() but with not check
+    reference force_wait() {
+        return co_awaiter<future<T> >(*this).force_wait();
+    }
+
+   ///sync() but with not check
+    void force_sync() const noexcept {
+        co_awaiter<future<T> >(*const_cast<future<T> *>(this)).force_sync();
+    }
+
 
     ///Wait asynchronously, return value
     /**

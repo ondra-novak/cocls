@@ -3,13 +3,14 @@
 #define SRC_COCLS_SELF_H_
 
 #include "common.h"
+#include "suspend_point.h"
 
 namespace cocls {
 
-///Retrieves handle to currently running coroutine
+///Retrieves suspend point of current coroutine
 /**
  * @code
- * std::coroutine_handle<> my_handle = co_await self();
+ * cocls::suspend_point<void> my_handle = co_await self();
  * @endcode
  */
 class self {
@@ -19,7 +20,7 @@ public:
         _h = h;
         return false;
     }
-    std::coroutine_handle<> await_resume() {
+    suspend_point<void> await_resume() {
         return _h;
     }
 

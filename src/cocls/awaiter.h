@@ -197,8 +197,18 @@ public:
     /**
      * Blocks execution until awaiter is signaled
      * @return result of awaited operation
+     * @note in debug build, assert can be triggered when wait() is used inside of coroutine. To override, use force_wait()
      */
     decltype(auto) wait();
+
+
+    ///Wait synchronously
+    /**
+     * Blocks execution until awaiter is signaled
+     * @return result of awaited operation
+     * @note can be called in coroutine
+     */
+    decltype(auto) force_wait();
 
     ///Wait synchronously
     /**
@@ -206,8 +216,13 @@ public:
      * Doesn't pick neither result nor exception
      * Useful if you need to synchronize with awaiter without being
      * affected by the result - for example without need to handle exception
+     * @note in debug build, assert can be triggered when wait() is used inside of coroutine. To override, use force_wait()
      */
     void sync() noexcept ;
+
+    ///Wait synchronously
+    /** Same as sync(), but doesn't trigger assert in debug*/
+    void force_sync() noexcept ;
 
 
     ///Subscribe custom awaiter
@@ -273,9 +288,25 @@ inline decltype(auto) co_awaiter<promise_type>::wait() {
     return await_resume();
 }
 
+template<typename promise_type>
+inline decltype(auto) co_awaiter<promise_type>::force_wait() {
+    force_sync();
+    return await_resume();
+}
+
 
 template<typename promise_type>
 inline void co_awaiter<promise_type>::sync() noexcept  {
+    if (await_ready()) return ;
+    assert(!coro_queue::is_active() && "Blocking wait in a coroutine (use force_sync() to override)");
+    sync_awaiter awt;
+    if (subscribe_awaiter(&awt)) {
+        awt.flag.wait(false);
+    }
+}
+
+template<typename promise_type>
+inline void co_awaiter<promise_type>::force_sync() noexcept  {
     if (await_ready()) return ;
     sync_awaiter awt;
     if (subscribe_awaiter(&awt)) {
