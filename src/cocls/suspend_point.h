@@ -42,7 +42,7 @@ public:
     static constexpr int inline_count = 3;
 
     ///construct default empty suspend point
-    constexpr suspend_point() = default;
+    suspend_point() = default;
     ///construct suspend point add one coroutine handle
     /**
      * @param h coroutine handle to include
@@ -184,9 +184,9 @@ public:
         } else {
             //this can happen, when co_await is called outside of coro_queue framework
              coro_queue::install_queue_and_call([&]{
-                return await_suspend(h);
+                await_suspend(h).resume();
              });
-            
+             return std::noop_coroutine();            
         }
     }
 
