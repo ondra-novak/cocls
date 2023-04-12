@@ -183,7 +183,9 @@ public:
             return out;
         } else {
             //this can happen, when co_await is called outside of coro_queue framework
-            return await_suspend(h);
+             coro_queue::install_queue_and_call([&]{
+                return await_suspend(h);
+             });
             
         }
     }
