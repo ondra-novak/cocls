@@ -86,8 +86,8 @@ namespace cocls {
  * situation before. If you store future in a variable, you can call has_value() which
  * can be also co_await-ed. The behavoir is the same as co_await the future itself,
  * but now, the result is true if the value has been set, or false if not.
- * 
- * @tparam T type of future variable. The type can be void when no value is stored. Such future 
+ *
+ * @tparam T type of future variable. The type can be void when no value is stored. Such future
  * can be used for synchronozation only (however, it can still capture an exception). It is
  * also possible to set T as reference (T &). In such case, the future carries reference, not
  * the value, and the variable must be stored until the consument retrieves the value. This
@@ -194,13 +194,15 @@ class [[nodiscard]] future: public future_common {
 public:
 
 
+    using promise_object = promise<T>;
+
     using value_type = T;
     using value_type_ptr = std::add_pointer_t<std::remove_reference_t<value_type> >;
     using reference = std::add_lvalue_reference_t<value_type>;
     using const_reference = std::add_lvalue_reference_t<std::add_const_t<value_type> >;
     static constexpr bool is_void = std::is_void_v<value_type>;
     static constexpr bool is_ref = !is_void && std::is_reference_v<value_type>;
-    using value_storage = std::conditional_t<is_void, int, 
+    using value_storage = std::conditional_t<is_void, int,
                     std::conditional_t<is_ref,value_type_ptr,value_type> >;
     using ptr_storage = std::conditional_t<is_void, int,  value_type_ptr>;
 
@@ -242,12 +244,12 @@ public:
 
     template<typename ... Args>
     future(__SetValueTag, Args && ... args)
-        :future_common(&awaiter::disabled, State::value) 
+        :future_common(&awaiter::disabled, State::value)
         ,_value(std::forward<Args>(args)...) {}
 
     template<typename ... Args>
     future(__SetReferenceTag,  ptr_storage v)
-        :future_common(&awaiter::disabled, State::value) 
+        :future_common(&awaiter::disabled, State::value)
         ,_ptr_value(v) {}
 
 
@@ -578,7 +580,7 @@ protected:
         _state = State::value;
     }
 
-    
+
     void set(std::exception_ptr e) {
         assert("Future is ready, can't set value twice" && _state == State::not_value);
         new (&_exception) std::exception_ptr(std::move(e));
