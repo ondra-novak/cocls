@@ -150,11 +150,7 @@ protected:
 
     void *_handle_addr = nullptr;
     resume_fn _resume_fn = &null_fn;
-    ///This value is set to true by resume() or resume_handle() when a coroutine handle is resumed
-    /**
-     * Because recursive resume is not possible,
-     */
-    bool _will_be_resumed = false;
+
 
     static suspend_point<void> null_fn(awaiter *, void *) noexcept {return {};}
 
