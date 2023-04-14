@@ -62,7 +62,8 @@ public:
     using storage_Arg_ptr = std::conditional_t<arg_is_void,std::nullptr_t, Arg *>;
     ///type of argument passed to a function, which defaults to std::nullptr_t in case, that Arg is void
     using param_Arg = std::conditional_t<arg_is_void,std::nullptr_t, reference_Arg>;
-
+    ///small object are returned by copy, other by reference
+    using gen_return = std::conditional_t<sizeof(Ret) <= 2*sizeof(void *), future<Ret>, future<Ret &> >;
     ///type of iterator
     using iterator = generator_iterator<generator<Ret, Arg> >;
 
@@ -85,7 +86,7 @@ public:
         //blocking flag for synchronous access - contains false when generator is pending
         std::atomic<bool> _block;
         //contains promise if called and there is a future waiting for result
-        promise<Ret &> _awaiting;
+        typename gen_return::promise_object _awaiting;
 
         //function is called when accessing synchronously
         /*
@@ -228,7 +229,7 @@ public:
         }
 
         //generate next item and prepare future
-        future<Ret &> next_future() {
+        gen_return next_future() {
             //check whether generator is idle (we can't access busy generator)
             assert("Generator is busy" && _caller == nullptr);
             //prepare future, retrieve promise
@@ -439,7 +440,7 @@ public:
      *    future<T>::result_of(generator)
      */
     template<typename ... Args>
-    future<Ret &> operator()(Args && ... args) {
+    gen_return operator()(Args && ... args) {
         if constexpr(arg_is_void) {
             static_assert(sizeof...(args) == 0, "The generator doesn't expect an argument");
             return _promise->next_future();
@@ -452,7 +453,13 @@ public:
 
     ///returns true, if the generator is finished
     bool done() const {
-        return _promise->done();
+        return !_promise && _promise->done();
+    }
+
+    ///returns true, if the generator is active
+    ///returns false, if the generator is done, or not initialized
+    operator bool() const {
+        return !done();
     }
 
 protected:
