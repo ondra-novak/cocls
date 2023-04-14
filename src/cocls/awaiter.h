@@ -177,12 +177,12 @@ public:
     ///co_await related function
     bool await_suspend(std::coroutine_handle<> h) {
         set_handle(h);
-        return this->_owner.subscribe_awaiter(this);
+        return this->_owner.subscribe(this);
     }
     ///suspend coroutine but register function to be resumed instead of coroutine itself
     bool await_suspend(resume_fn fn, void *user_ctx) {
         set_resume_fn(fn,user_ctx);
-        return this->_owner.subscribe_awaiter(this);
+        return this->_owner.subscribe(this);
     }
     ///co_await related function
     decltype(auto) await_resume(){
@@ -229,8 +229,8 @@ public:
      * @retval false awaiting expression is already resolved, so no registration done, you can
      * call await_resume()
      */
-    bool subscribe_awaiter(awaiter *awt) {
-        return this->_owner.subscribe_awaiter(awt);
+    bool subscribe(awaiter *awt) {
+        return this->_owner.subscribe(awt);
     }
 
 
@@ -296,7 +296,7 @@ inline void co_awaiter<promise_type>::sync() noexcept  {
     if (await_ready()) return ;
     assert(!coro_queue::is_active() && "Blocking wait in a coroutine (use force_sync() to override)");
     sync_awaiter awt;
-    if (subscribe_awaiter(&awt)) {
+    if (subscribe(&awt)) {
         awt.flag.wait(false);
     }
 }
@@ -305,7 +305,7 @@ template<typename promise_type>
 inline void co_awaiter<promise_type>::force_sync() noexcept  {
     if (await_ready()) return ;
     sync_awaiter awt;
-    if (subscribe_awaiter(&awt)) {
+    if (subscribe(&awt)) {
         awt.flag.wait(false);
     }
 }

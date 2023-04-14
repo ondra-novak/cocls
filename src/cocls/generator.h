@@ -324,7 +324,7 @@ public:
         }
 
         ///subscribe other awaiter)
-        bool subscribe_awaiter(awaiter *awt) {
+        bool subscribe(awaiter *awt) {
             this->_owner._promise->next_async(awt).resume();
             return true;
         }

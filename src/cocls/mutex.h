@@ -48,9 +48,6 @@ protected:
         }
     };
 
-
-
-
 public:
 
     ///construct a mutex
@@ -65,8 +62,6 @@ public:
         assert(_queue == nullptr);
         assert(_requests == nullptr);
     }
-
-
 
     ///Contains ownership of the mutex
     /** By holding this object, you owns an ownership */
@@ -197,7 +192,7 @@ protected:
     }
 
     //when try_lock fails, we need to register itself to waiting queue (_requests)
-    bool subscribe_awaiter(awaiter *aw) {
+    bool subscribe(awaiter *aw) {
         //so subscribe to _requests
         aw->subscribe(_requests);
         //now check result of _next, which gives as hint, how lock operation ended

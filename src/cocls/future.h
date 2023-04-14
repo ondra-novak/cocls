@@ -86,6 +86,13 @@ namespace cocls {
  * situation before. If you store future in a variable, you can call has_value() which
  * can be also co_await-ed. The behavoir is the same as co_await the future itself,
  * but now, the result is true if the value has been set, or false if not.
+ * 
+ * @tparam T type of future variable. The type can be void when no value is stored. Such future 
+ * can be used for synchronozation only (however, it can still capture an exception). It is
+ * also possible to set T as reference (T &). In such case, the future carries reference, not
+ * the value, and the variable must be stored until the consument retrieves the value. This
+ * allows to skip copying. Alse note, that future<T&> can be used to construct future<T>, you
+ * just need to use construct-by-lambda.
  *
  */
 template<typename T>
@@ -115,155 +122,17 @@ enum DropTag {drop};
 
 ///tags all futures, you can use std::base_of<future_tag, T> to determine, whether object
 /// is future
-class future_tag {};
-
-template<typename T>
-class [[nodiscard]] future: public future_tag {
+class future_common {
 public:
-
-
-    using value_type = T;
-    using reference = std::add_lvalue_reference_t<value_type>;
-    using const_reference = std::add_lvalue_reference_t<std::add_const_t<value_type> >;
-    static constexpr bool is_void = std::is_void_v<value_type>;
-    static constexpr bool is_ref = !is_void && std::is_reference_v<value_type>;
-    using value_storage = std::conditional_t<is_void, int, 
-                    std::conditional_t<is_ref,std::add_pointer_t<std::remove_reference_t<value_type>>,value_type> >;
-
-    using promise_type = async_promise<T>;
-
     enum class State {
         not_value,
         value,
+        value_ref,
         exception
     };
 
-    class __SetValueTag {};
-    class __SetExceptionTag {};
-    class __SetNoValueTag {};
-
-    ///construct empty future
-    /**
-     * It can be used manually. You need to obtain promise by calling the function get_promise(), then
-     * future can be awaited
-     */
-    future():_awaiter(&awaiter::instance) {};
-
-    ///construct future, calls function with the promise
-    /**
-     * @param init function to start asynchronous operation and store the promise which is
-     * eventually resolved.
-     *
-     * constructor can be used in return expresion. You can omit the constructor name itself as
-     * the constructor is intentionally declared without explicit keyword
-     */
-    template<typename Fn>
-    CXX20_REQUIRES(std::invocable<Fn, promise<T> >)
-    future(Fn &&init) :_awaiter(nullptr) {
-        init(promise<T>(*this));
-    }
-
-    template<typename Fn>
-    CXX20_REQUIRES(std::same_as<decltype(std::declval<Fn>()()), future<T> >)
-    future(Fn &&init) {
-        new(this) future<T>(init());
-    }
-
-    template<typename ... Args>
-    future(__SetValueTag, Args && ... args)
-        :_value(std::forward<Args>(args)...)
-        ,_awaiter(&awaiter::disabled)
-        ,_state(State::value){}
-
-    future(__SetExceptionTag, std::exception_ptr e)
-        :_exception(std::move(e))
-        ,_awaiter(&awaiter::disabled)
-        ,_state(State::exception){}
-
-    future(__SetNoValueTag)
-        :_awaiter(&awaiter::disabled)
-        ,_state(State::not_value){}
-
-    ///construct by future_coro - companion coroutine result
-    /**
-     * If you declare future_coro coroutine type, its result can be passed to the future.
-     * @param coro coroutine
-     *
-     * it is also possible to use future<T> as coroutine (the function can use co_ keywords,
-     * but note that future<> is not movable, but future_coro<> is movable
-     *
-     */
-    future(async<T> &&coro):future(coro) {}
-
-    future(async<T> &coro):_awaiter(&awaiter::instance) {
-        auto p = get_promise();
-        auto h = coro.start_promise(p);
-        if (coro_queue::is_active()) h.resume();
-        else coro_queue::install_queue_and_resume(h);
-    }
-
-    ///Resolves future by a value
-    template<typename ... Args>
-    static future<T> set_value(Args && ... args) {
-        return future<T>(__SetValueTag(), std::forward<Args>(args)...);
-    }
-
-    ///Resolves future by an exception
-    static future<T> set_exception(std::exception_ptr e) {
-        return future<T>(__SetExceptionTag(), std::move(e));
-    }
-
-    ///Sets future to state not-value. The future is ready, but has no value
-    static future<T> set_not_value() {
-        return future<T>(__SetNoValueTag());
-    }
-
-
-
-
-    ///retrieves promise from unitialized object
-    promise<T> get_promise() {
-        [[maybe_unused]] auto cur_awaiter = _awaiter.exchange(nullptr, std::memory_order_relaxed);
-        assert("Invalid future state" && cur_awaiter== &awaiter::instance);
-        return promise<T>(*this);
-    }
-
-    ///construct future from result returned by a function (can be lambda)
-    /**
-     * @param fn function with zero argument and returns the same type
-     *
-     * @note future is destroyed and recreated. If an exception is thrown from the
-     * function, the future is resolved with that exception
-     */
-    template<typename Fn>
-    CXX20_REQUIRES(std::same_as<decltype(std::declval<Fn>()()), future<T> > )
-    void result_of(Fn &&fn) noexcept {
-        this->~future();
-        try {
-            new(this) future<T>(fn());
-        } catch(...) {
-            new(this) future<T>();
-            get_promise()(std::current_exception());
-        }
-    }
-
-    ///same as result_of
-    template<typename Fn>
-    CXX20_REQUIRES(std::same_as<decltype(std::declval<Fn>()()), future<T> > )
-    future<T> &operator<<(Fn &&fn) noexcept {
-        result_of(std::forward<Fn>(fn));
-        return *this;
-    }
-
-    ///destructor
-    ~future() {
-        assert("Destroy of pending future" && !pending());
-        switch (_state) {
-            default:break;
-            case State::value: _value.~value_storage();break;
-            case State::exception: _exception.~exception_ptr();break;
-        }
-    }
+    future_common() = default;
+    future_common(awaiter *awt, State state):_awaiter(awt), _state(state) {}
 
     ///determines, whether future is initialized
     /**
@@ -298,6 +167,181 @@ public:
         return _awaiter.load(std::memory_order_acquire) == &awaiter::disabled;
     }
 
+
+    ///subscribes awaiter, which is signaled when future is ready
+    /**
+     * @param awt awaiter to subscribe
+     * @retval true awaiter subscribed and waiting
+     * @retval false awaiter not subscribed, the result is already available
+     */
+    bool subscribe(awaiter *awt) {
+         return awt->subscribe_check_ready(_awaiter, awaiter::disabled);
+    }
+
+    ~future_common() {
+        assert("Destroy of pending future" && !pending());
+    }
+
+
+
+protected:
+    mutable awaiter_collector _awaiter = nullptr;
+    State _state=State::not_value;
+};
+
+template<typename T>
+class [[nodiscard]] future: public future_common {
+public:
+
+
+    using value_type = T;
+    using value_type_ptr = std::add_pointer_t<std::remove_reference_t<value_type> >;
+    using reference = std::add_lvalue_reference_t<value_type>;
+    using const_reference = std::add_lvalue_reference_t<std::add_const_t<value_type> >;
+    static constexpr bool is_void = std::is_void_v<value_type>;
+    static constexpr bool is_ref = !is_void && std::is_reference_v<value_type>;
+    using value_storage = std::conditional_t<is_void, int, 
+                    std::conditional_t<is_ref,value_type_ptr,value_type> >;
+    using ptr_storage = std::conditional_t<is_void, int,  value_type_ptr>;
+
+    using promise_type = async_promise<T>;
+
+
+    class __SetValueTag {};
+    class __SetReferenceTag {};
+    class __SetExceptionTag {};
+    class __SetNoValueTag {};
+
+    ///construct empty future
+    /**
+     * It can be used manually. You need to obtain promise by calling the function get_promise(), then
+     * future can be awaited
+     */
+    future():future_common(&awaiter::instance, State::not_value) {};
+
+    ///construct future, calls function with the promise
+    /**
+     * @param init function to start asynchronous operation and store the promise which is
+     * eventually resolved.
+     *
+     * constructor can be used in return expresion. You can omit the constructor name itself as
+     * the constructor is intentionally declared without explicit keyword
+     */
+    template<typename Fn>
+    CXX20_REQUIRES(std::invocable<Fn, promise<T> >)
+    future(Fn &&init) {
+        init(promise<T>(*this));
+    }
+
+    template<typename Fn>
+    CXX20_REQUIRES(ReturnsFuture<Fn, T>)
+    future(Fn &&init) {
+        new(this) auto(init());
+    }
+
+
+    template<typename ... Args>
+    future(__SetValueTag, Args && ... args)
+        :future_common(&awaiter::disabled, State::value) 
+        ,_value(std::forward<Args>(args)...) {}
+
+    template<typename ... Args>
+    future(__SetReferenceTag,  ptr_storage v)
+        :future_common(&awaiter::disabled, State::value) 
+        ,_ptr_value(v) {}
+
+
+    future(__SetExceptionTag, std::exception_ptr e)
+        :future_common(&awaiter::disabled,State::exception)
+        ,_exception(std::move(e)) {}
+
+    future(__SetNoValueTag)
+        :future_common(&awaiter::disabled,State::not_value) {}
+
+    ///construct by future_coro - companion coroutine result
+    /**
+     * If you declare future_coro coroutine type, its result can be passed to the future.
+     * @param coro coroutine
+     *
+     * it is also possible to use future<T> as coroutine (the function can use co_ keywords,
+     * but note that future<> is not movable, but future_coro<> is movable
+     *
+     */
+    future(async<T> &&coro):future(coro) {}
+
+    future(async<T> &coro):future_common(&awaiter::instance,  State::not_value) {
+        auto p = get_promise();
+        auto h = coro.start_promise(p);
+        if (coro_queue::is_active()) h.resume();
+        else coro_queue::install_queue_and_resume(h);
+    }
+
+    ///Resolves future by a value
+    template<typename ... Args>
+    static future<T> set_value(Args && ... args) {
+        if constexpr(is_ref) {
+            return future<T>(__SetReferenceTag(), &args...);
+        } else {
+            return future<T>(__SetValueTag(), std::forward<Args>(args)...);
+        }
+    }
+
+    ///Resolves future by an exception
+    static future<T> set_exception(std::exception_ptr e) {
+        return future<T>(__SetExceptionTag(), std::move(e));
+    }
+
+    ///Sets future to state not-value. The future is ready, but has no value
+    static future<T> set_not_value() {
+        return future<T>(__SetNoValueTag());
+    }
+
+
+
+
+    ///retrieves promise from unitialized object
+    promise<T> get_promise() {
+        [[maybe_unused]] auto cur_awaiter = _awaiter.exchange(nullptr, std::memory_order_relaxed);
+        assert("Invalid future state" && cur_awaiter== &awaiter::instance);
+        return promise<T>(*this);
+    }
+
+    ///construct future from result returned by a function (can be lambda)
+    /**
+     * @param fn function with zero argument and returns the same type
+     *
+     * @note future is destroyed and recreated. If an exception is thrown from the
+     * function, the future is resolved with that exception
+     */
+    template<typename Fn>
+    CXX20_REQUIRES(ReturnsFuture<Fn, T>)
+    void result_of(Fn &&fn) noexcept {
+        this->~future();
+        try {
+            new(this) auto(fn());
+        } catch(...) {
+            new(this) future<T>();
+            get_promise()(std::current_exception());
+        }
+    }
+
+    ///same as result_of
+    template<typename Fn>
+    CXX20_REQUIRES(ReturnsFuture<Fn, T>)
+    future<T> &operator<<(Fn &&fn) noexcept {
+        result_of(std::forward<Fn>(fn));
+        return *this;
+    }
+
+    ///destructor
+    ~future() {
+        switch (_state) {
+            default:break;
+            case State::value: _value.~value_storage();break;
+            case State::exception: _exception.~exception_ptr();break;
+        }
+    }
+
     ///retrieves result value (as reference)
     /**
      * @return reference to the value, you can modify the value or move the value out.
@@ -323,10 +367,19 @@ public:
                 std::rethrow_exception(_exception);
                 break;
             case State::value:
+                if constexpr(!is_void) {
+                    if constexpr(is_ref) {
+                        return *_value;
+                    }
+                    else {
+                        return _value;
+                    }
+                }
+                break;
+            case State::value_ref:
+                if constexpr(!is_void) return *_ptr_value;
                 break;
         }
-        if constexpr(is_ref) return *_value;
-        else if constexpr(!is_void) return _value;
     }
 
     ///retrieves result value (as reference)
@@ -352,10 +405,19 @@ public:
                 std::rethrow_exception(_exception);
                 break;
             case State::value:
+                if constexpr(!is_void) {
+                    if constexpr(is_ref) {
+                        return *_value;
+                    }
+                    else {
+                        return _value;
+                    }
+                }
+                break;
+            case State::value_ref:
+                if constexpr(!is_void) return *_ptr_value;
                 break;
         }
-        if constexpr(is_ref) return *_value;
-        else if constexpr(!is_void) return _value;
     }
 
 
@@ -422,16 +484,6 @@ public:
      * @note accessing the value is not MT-Safe.
      */
     co_awaiter<future<T> > operator co_await() {return *this;}
-
-    ///subscribes awaiter, which is signaled when future is ready
-    /**
-     * @param awt awaiter to subscribe
-     * @retval true awaiter subscribed and waiting
-     * @retval false awaiter not subscribed, the result is already available
-     */
-    bool subscribe(awaiter *awt) {
-        return subscribe_awaiter(awt);
-    }
 
 
     ///has_value() awaiter return by function has_value()
@@ -502,22 +554,16 @@ protected:
 
     union {
         value_storage _value;
+        ptr_storage _ptr_value;
         std::exception_ptr _exception;
 
     };
-    mutable awaiter_collector _awaiter = nullptr;
-    State _state=State::not_value;
-
-    //need for co_awaiter
-    bool is_ready() const {return ready();}
-    //need for co_awaiter
-    bool subscribe_awaiter(awaiter *x) {return x->subscribe_check_ready(_awaiter, awaiter::disabled);}
-    //need for co_awaiter
-    reference get_result() {return value();}
 
 
     void set_ref(value_storage x) {
-        _value = x;
+        assert("Future is ready, can't set value twice" && _state == State::not_value);
+        _ptr_value = x;
+        _state = State::value_ref;
     }
 
     template<typename ... Args>
@@ -525,13 +571,14 @@ protected:
         assert("Future is ready, can't set value twice" && _state == State::not_value);
         if constexpr(is_ref) {
             set_ref(&args...);
+            return;
         } else if constexpr(!is_void) {
             new(&_value) value_type(std::forward<Args>(args)...);
         }
         _state = State::value;
     }
 
-
+    
     void set(std::exception_ptr e) {
         assert("Future is ready, can't set value twice" && _state == State::not_value);
         new (&_exception) std::exception_ptr(std::move(e));
@@ -560,6 +607,7 @@ class promise {
 public:
 
     using fut = future<T>;
+    using reference_type = std::add_lvalue_reference_t<typename future<T>::value_storage>;
 
     ///construct empty promise - to be assigned
     promise():_owner(nullptr) {}
@@ -628,6 +676,15 @@ public:
     suspend_point<bool> set_value(DropTag) {
         auto m = claim();
         if (m) {
+            return suspend_point<bool>(m->resolve(), true);
+        }
+        return suspend_point<bool>(false);
+    }
+
+    suspend_point<bool> reference(reference_type value) {
+        auto m = claim();
+        if (m) {
+            m->set_ptr(&value);
             return suspend_point<bool>(m->resolve(), true);
         }
         return suspend_point<bool>(false);
@@ -855,7 +912,7 @@ public:
     }
 
     template<typename Factory>
-    CXX20_REQUIRES(std::same_as<future<T>, decltype(std::declval<Factory>()())>)
+    CXX20_REQUIRES(ReturnsFuture<Factory, T>)
     future_with_cb &operator << (Factory &&fn) {
         future<T>::operator<<(std::forward<Factory>(fn));
         return *this;
@@ -935,7 +992,7 @@ void discard(Fn &&fn) {
     public:
         Awt(Fn &&fn, bool &waiting):_fut(fn()) {
             set_resume_fn(&fin);
-            waiting = (_fut.operator co_await()).subscribe_awaiter(this);
+            waiting = (_fut.operator co_await()).subscribe(this);
         }
 
         static suspend_point<void> fin(awaiter *me, void *) noexcept {

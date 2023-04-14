@@ -61,9 +61,6 @@ class shared_future {
     class future_internal: public Base {
     public:
         using Base::Base;
-
-
-
         resolve_cb resolve_tracer;
     };
 
@@ -87,7 +84,8 @@ public:
      * Your future is initialized and your promise can be used to resolve the future
      *
      */
-    template<typename Fn> CXX20_REQUIRES(std::invocable<Fn, promise<T> >)
+    template<typename Fn> 
+    CXX20_REQUIRES(std::invocable<Fn, promise<T> >)
     shared_future(Fn &&fn)
         :_ptr(std::make_shared<future_internal>(std::forward<Fn>(fn))) {
 
@@ -103,7 +101,8 @@ public:
      *
      * @param fn function to be called and return future<T>
      */
-    template<typename Fn> CXX20_REQUIRES(std::same_as<decltype(std::declval<Fn>()()), Base > )
+    template<typename Fn> 
+    CXX20_REQUIRES(ReturnsFuture<Fn, T>)
     shared_future(Fn &&fn)
         :_ptr(std::make_shared<future_internal>()) {
         _ptr->result_of(std::forward<Fn>(fn));
@@ -186,6 +185,14 @@ public:
         return _ptr->wait();
     }
 
+    ///Wait synchronously
+    /**
+     * @return the value of the future
+     */
+    decltype(auto) force_wait() {
+        return _ptr->force_wait();
+    }
+
 
     ///For compatible API - same as wait()
     decltype(auto) join() {
@@ -198,8 +205,23 @@ public:
         _ptr->sync();
     }
 
+    ///Synchronise with the future, but doesn't pick the value
+    /** Just waits for result, but doesn't pick the result including the exception */
+    void force_sync() {
+        _ptr->force_sync();
+    }
+
     ///co_await the result.
     auto operator co_await() {return _ptr->operator co_await();}
+
+    ///same as result_of
+    template<typename Fn>
+    CXX20_REQUIRES(ReturnsFuture<Fn, T>)
+    shared_future<T> &operator<<(Fn &&fn) noexcept {
+        _ptr->operator <<(std::forward<Fn>(fn));
+        return *this;
+    }
+
 
 protected:
     std::shared_ptr<future_internal> _ptr;
@@ -213,7 +235,7 @@ inline void shared_future<T,Base>::resolve_cb::charge(std::shared_ptr<future_int
             return {};
         });
        _ptr = ptr;
-       if (!(ptr->operator co_await()).subscribe_awaiter(&ptr->resolve_tracer)) {
+       if (!(ptr->operator co_await()).subscribe(&ptr->resolve_tracer)) {
            _ptr = nullptr;
       }
 }

@@ -62,11 +62,17 @@ namespace cocls {
 
     #if defined( __cpp_concepts) and not defined (__CDT_PARSER__)
 
+    template<typename T> class future;
+
     template<typename T>
     concept Storage = requires(T v) {
         {v.alloc(std::declval<std::size_t>())}->std::same_as<void *>;
         {T::dealloc(std::declval<void *>(), std::declval<std::size_t>())}->std::same_as<void>;
     };
+
+    template<typename Fn, typename T>
+    concept ReturnsFuture =  (std::same_as<decltype(std::declval<Fn>()()), future<T> > 
+                 || std::same_as<decltype(std::declval<Fn>()()), future<std::add_lvalue_reference_t<T> > >);
 
 
 

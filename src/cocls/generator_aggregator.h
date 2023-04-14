@@ -31,7 +31,7 @@ public:
 
     template<typename ... Args>
     void charge(Args && ... args) {
-        _gen.next(std::forward<Args>(args)...).subscribe_awaiter(this);
+        _gen.next(std::forward<Args>(args)...).subscribe(this);
     }
     generator<T, Arg> &get_generator() {
         return _gen;

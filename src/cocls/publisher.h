@@ -537,7 +537,7 @@ protected:
     bool ready() {
         return _q->advance(_h,_t);
     }
-    bool subscribe_awaiter(awaiter *awt) {
+    bool subscribe(awaiter *awt) {
         return _q->advance_suspend(_h, awt);
     }
     bool check_next() {
