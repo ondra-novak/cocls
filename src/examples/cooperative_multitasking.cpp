@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cocls/future.h>
+#include <cocls/async.h>
 
 cocls::async<void> test_task(int id) {
     for (int j = 0; j < 10; j++) {

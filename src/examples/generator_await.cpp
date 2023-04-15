@@ -1,5 +1,6 @@
 #include <cocls/generator.h>
 #include <cocls/future.h>
+#include <cocls/async.h>
 
 #include <iostream>
 

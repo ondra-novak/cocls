@@ -8,7 +8,6 @@
 #include "awaiter.h"
 #include "exceptions.h"
 #include "with_allocator.h"
-#include "async.h"
 
 
 #include <assert.h>
@@ -106,12 +105,6 @@ class future;
  */
 template<typename T>
 class promise;
-
-
-
-
-template<typename T>
-class async;
 
 template<typename T>
 class async_promise;
@@ -259,23 +252,6 @@ public:
     future(__SetNoValueTag)
         :future_common(&awaiter::disabled,State::not_value) {}
 
-    ///construct by future_coro - companion coroutine result
-    /**
-     * If you declare future_coro coroutine type, its result can be passed to the future.
-     * @param coro coroutine
-     *
-     * it is also possible to use future<T> as coroutine (the function can use co_ keywords,
-     * but note that future<> is not movable, but future_coro<> is movable
-     *
-     */
-    future(async<T> &&coro):future(coro) {}
-
-    future(async<T> &coro):future_common(&awaiter::instance,  State::not_value) {
-        auto p = get_promise();
-        auto h = coro.start_promise(p);
-        if (coro_queue::is_active()) h.resume();
-        else coro_queue::install_queue_and_resume(h);
-    }
 
     ///Resolves future by a value
     template<typename ... Args>
@@ -969,8 +945,6 @@ promise<T> make_promise(Fn &&fn, Storage &storage) {
 /**@}*/
 
 
-template<typename T>
-future(async<T>) -> future<T>;
 
 
 ///discard result of a future

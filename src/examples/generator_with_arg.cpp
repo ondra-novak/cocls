@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cocls/generator.h>
+#include <cocls/async.h>
 
 struct RetVal {
     double sum = 0;

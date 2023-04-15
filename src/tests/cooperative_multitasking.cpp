@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cocls/future.h>
+#include <cocls/async.h>
 #include "check.h"
 
 std::vector<int> results = {

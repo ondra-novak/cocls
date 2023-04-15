@@ -1,6 +1,8 @@
 #include <iostream>
 #include <thread>
 #include <cocls/future.h>
+#include <cocls/async.h>
+
 
 cocls::future<int> work() {
     return [](cocls::promise<int> p){

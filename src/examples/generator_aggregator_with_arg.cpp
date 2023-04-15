@@ -2,6 +2,7 @@
 #include <cocls/generator.h>
 #include <cocls/generator_aggregator.h>
 #include <cocls/future.h>
+#include <cocls/async.h>
 #include <vector>
 
 struct RetVal {

@@ -1,6 +1,7 @@
 #include <iostream>
 #include <thread>
 #include <cocls/shared_future.h>
+#include <cocls/async.h>
 
 
 cocls::future<int> work(int val, int time) {
