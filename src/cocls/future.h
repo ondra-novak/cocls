@@ -203,10 +203,11 @@ public:
     using value_storage = std::conditional_t<is_void, int, 
                     std::conditional_t<is_ref,value_type_ptr,value_type> >;
     using ptr_storage = std::conditional_t<is_void, int,  value_type_ptr>;
+    using promise_t = promise<T>;
 
+    //shortcut to allow future coroutines
     using promise_type = async_promise<T>;
-
-
+    
     class __SetValueTag {};
     class __SetReferenceTag {};
     class __SetExceptionTag {};
@@ -606,13 +607,13 @@ template<typename T>
 class promise {
 public:
 
-    using fut = future<T>;
+    using future_t = future<T>;
     using reference_type = std::add_lvalue_reference_t<typename future<T>::value_storage>;
 
     ///construct empty promise - to be assigned
     promise():_owner(nullptr) {}
     ///construct promise pointing at specific future
-    explicit promise(future<T> &fut):_owner(&fut) {}
+    explicit promise(future_t &fut):_owner(&fut) {}
     ///promise is not copyable
     promise(const promise &other) =delete;
     ///promise can be moved
