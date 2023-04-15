@@ -454,9 +454,15 @@ public:
         }
     }
 
-    ///returns true, if the generator is finished
+   ///returns true, if the generator is finished
     bool done() const {
-        return _promise->done();
+        return !_promise || _promise->done();
+    }
+
+    ///returns true, if the generator is active
+    ///returns false, if the generator is done, or not initialized
+    operator bool() const {
+        return !done();
     }
 
 protected:
