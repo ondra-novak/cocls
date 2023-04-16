@@ -276,6 +276,20 @@ public:
     }
 };
 
+template<typename T, suspend_point<void> (T::*fn)(awaiter *) noexcept>
+class call_fn_awaiter: public awaiter {
+public:
+    call_fn_awaiter(T *trg) {
+        set_resume_fn(wakeup, trg);
+    }
+
+protected:
+    static suspend_point<void> wakeup(awaiter *me, void *user_ctx) noexcept {
+        T *owner = reinterpret_cast<T *>(user_ctx);
+        return ((*owner).*fn)(me);
+    }
+};
+
 
 
 template<typename promise_type>
