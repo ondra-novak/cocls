@@ -155,7 +155,7 @@ public:
     void *alloc(std::size_t sz)  {
         void *p;
         if (_busy.exchange(true, std::memory_order_relaxed)) {
-            p = coro_promise_base::default_new(sz+sizeof(reusable_storage_mtsafe **));
+            p = ::operator new(sz+sizeof(reusable_storage_mtsafe **));
         } else {
             p = reusable_storage::alloc(sz+sizeof(reusable_storage_mtsafe **));
         }
@@ -169,7 +169,7 @@ public:
         if (ptr == me->_ptr) {
             me->_busy.store(false, std::memory_order_relaxed);
         } else {
-            coro_promise_base::default_delete(ptr, sz);
+            ::operator delete(ptr, sz);
         }
     }
 protected:
