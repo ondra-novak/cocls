@@ -1,6 +1,7 @@
 #include <iostream>
 #include <thread>
 #include <cocls/future.h>
+#include <cocls/async.h>
 
 
 cocls::async<void> cofn2(cocls:: promise<int> p) {

@@ -8,7 +8,6 @@
 #include "awaiter.h"
 #include "exceptions.h"
 #include "with_allocator.h"
-#include "async.h"
 
 
 #include <assert.h>
@@ -107,12 +106,6 @@ class future;
 template<typename T>
 class promise;
 
-
-
-
-template<typename T>
-class async;
-
 template<typename T>
 class async_promise;
 
@@ -205,9 +198,10 @@ public:
     using value_storage = std::conditional_t<is_void, int,
                     std::conditional_t<is_ref,value_type_ptr,value_type> >;
     using ptr_storage = std::conditional_t<is_void, int,  value_type_ptr>;
+    using promise_t = promise<T>;
 
+    //shortcut to allow future coroutines
     using promise_type = async_promise<T>;
-
 
     class __SetValueTag {};
     class __SetReferenceTag {};
@@ -260,23 +254,6 @@ public:
     future(__SetNoValueTag)
         :future_common(&awaiter::disabled,State::not_value) {}
 
-    ///construct by future_coro - companion coroutine result
-    /**
-     * If you declare future_coro coroutine type, its result can be passed to the future.
-     * @param coro coroutine
-     *
-     * it is also possible to use future<T> as coroutine (the function can use co_ keywords,
-     * but note that future<> is not movable, but future_coro<> is movable
-     *
-     */
-    future(async<T> &&coro):future(coro) {}
-
-    future(async<T> &coro):future_common(&awaiter::instance,  State::not_value) {
-        auto p = get_promise();
-        auto h = coro.start_promise(p);
-        if (coro_queue::is_active()) h.resume();
-        else coro_queue::install_queue_and_resume(h);
-    }
 
     ///Resolves future by a value
     template<typename ... Args>
@@ -608,13 +585,13 @@ template<typename T>
 class promise {
 public:
 
-    using fut = future<T>;
+    using future_t = future<T>;
     using reference_type = std::add_lvalue_reference_t<typename future<T>::value_storage>;
 
     ///construct empty promise - to be assigned
     promise():_owner(nullptr) {}
     ///construct promise pointing at specific future
-    explicit promise(future<T> &fut):_owner(&fut) {}
+    explicit promise(future_t &fut):_owner(&fut) {}
     ///promise is not copyable
     promise(const promise &other) =delete;
     ///promise can be moved
@@ -970,8 +947,6 @@ promise<T> make_promise(Fn &&fn, Storage &storage) {
 /**@}*/
 
 
-template<typename T>
-future(async<T>) -> future<T>;
 
 
 ///discard result of a future
@@ -1011,6 +986,74 @@ void discard(Fn &&fn) {
     if (!w) x->resume();
 }
 
+///Implements future awaiter, which calls a member function when future is set
+/**
+ * This object can replace a coroutine for simple usage, especially when an object
+ * need to convert a future of asynchronous operation, or if can easy handle
+ * state of asynchronous operation. Great benefit of this replacement is that
+ * this object has known size during compile time and can be declared as member
+ * variable of associated object.
+ *
+ * @tparam T Type of future which is handled by this awaiter (future<T>)
+ * @tparam Obj Object which handles completion of the future
+ * @tparam fn pointer to member function, which handles completion of the future. The
+ * function has following prototype: suspend_point<void> fn(future<T> &) noexcept
+ *
+ * You need to construct this object with reference to the owner object. To initiate
+ * asynchronous operation and to capture resulting future, you need to use
+ * the operator << (similar for future<T>) and pass a function or a lambda function,
+ * which returns a future to be captured.
+ *
+ * Once future is complete, the function fn is called with the future instance. The
+ * future passed as argument is already completed.
+ *
+ * @note The function to be called must be declared as noexcept. However, accessing
+ * the future can throw an exception. The function must properly handle the exception
+ *
+ * @note Disadvantage: Contrary to coroutines, the function is called immediately
+ * once the completion is done. No suspend_point is involved. This can be an issue
+ * for complex state handling. In this case, it is better to use the coroutine
+ *
+ * @note Object is not movable nor copyable
+ *
+ */
+template<typename T, typename Obj,suspend_point<void> (Obj::*fn)(future<T> &) noexcept>
+class call_fn_future_awaiter: public awaiter {
+public:
+    ///construct the object
+    /**
+     * @param owner reference to object which handles completion event
+     */
+    call_fn_future_awaiter(Obj &owner) {
+        set_resume_fn(wakeup, &owner);
+    }
+
+
+    ///Run specified function or lambda function, capture future<> result and register the callback (atomically)
+    /**
+     * Function captures a returning future<> and performs operation 'await' on it.
+     * Once operation is complete, the specified member function is called.
+     *
+     * @param xfn a function to execute
+     *
+     *
+     */
+    template<typename Fn>
+    CXX20_REQUIRES(ReturnsFuture<Fn, T>)
+    void operator<<(Fn &&xfn) {
+        _fut << std::forward<Fn>(xfn);
+        if (!_fut.subscribe(this)) {
+            this->resume();
+        }
+    }
+protected:
+    future<T> _fut;
+    static suspend_point<void> wakeup(awaiter *me, void *user_ctx) noexcept {
+        Obj *owner = reinterpret_cast<Obj *>(user_ctx);
+        auto _this = static_cast<call_fn_future_awaiter *>(me);
+        return ((*owner).*fn)(_this->_fut);
+    }
+};
 
 
 

@@ -1,6 +1,6 @@
 #include "check.h"
 #include <cocls/future.h>
-#include <cocls/coro_queue.h>
+#include <cocls/async.h>
 
 cocls::async<void> coro_test(int &counter) {
     counter++;

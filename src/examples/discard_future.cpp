@@ -1,6 +1,7 @@
 #include <iostream>
 #include <thread>
 #include <cocls/future.h>
+#include <cocls/async.h>
 
 
 cocls::future<int> work(std::thread &thr) {

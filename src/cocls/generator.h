@@ -42,16 +42,17 @@ namespace cocls {
  * of the generator, which can slightly reduce a performance especially when co_await
  * dosn't actually perform any asynchronous operation.
  *
- * @tparam Ret specifies return value of the call, or type of value, which the generator
+ * @tparam T specifies return value of the call, or type of value, which the generator
  * generates. Can't be void, can't be std::nullptr. If you need to specify no-value, use
  * std::monostate
  * @tparam Arg specifies argument type. This type can be void, which means, that generator
  * doesn't expect any argument
  */
-template<typename Ret, typename Arg = void>
+template<typename T, typename Arg = void>
 class generator {
 public:
 
+    using Ret = std::remove_reference_t<T>;
     ///type of argument
     using arg_type = Arg;
     ///contains true, if the generator doesn't need argument
@@ -62,10 +63,12 @@ public:
     using storage_Arg_ptr = std::conditional_t<arg_is_void,std::nullptr_t, Arg *>;
     ///type of argument passed to a function, which defaults to std::nullptr_t in case, that Arg is void
     using param_Arg = std::conditional_t<arg_is_void,std::nullptr_t, reference_Arg>;
-    ///small object are returned by copy, other by reference
-    using gen_return = std::conditional_t<sizeof(Ret) <= 2*sizeof(void *), future<Ret>, future<Ret &> >;
+
     ///type of iterator
     using iterator = generator_iterator<generator<Ret, Arg> >;
+
+    using promise_t = promise<T>;
+    using future_t = future<T>;    
 
     ///contains coroutine promise
     class promise_type {
@@ -86,7 +89,7 @@ public:
         //blocking flag for synchronous access - contains false when generator is pending
         std::atomic<bool> _block;
         //contains promise if called and there is a future waiting for result
-        typename gen_return::promise_object _awaiting;
+        promise_t _awaiting;
 
         //function is called when accessing synchronously
         /*
@@ -229,7 +232,7 @@ public:
         }
 
         //generate next item and prepare future
-        gen_return next_future() {
+        future_t next_future() {
             //check whether generator is idle (we can't access busy generator)
             assert("Generator is busy" && _caller == nullptr);
             //prepare future, retrieve promise
@@ -440,7 +443,7 @@ public:
      *    future<T>::result_of(generator)
      */
     template<typename ... Args>
-    gen_return operator()(Args && ... args) {
+    future_t operator()(Args && ... args) {
         if constexpr(arg_is_void) {
             static_assert(sizeof...(args) == 0, "The generator doesn't expect an argument");
             return _promise->next_future();
@@ -451,9 +454,9 @@ public:
         }
     }
 
-    ///returns true, if the generator is finished
+   ///returns true, if the generator is finished
     bool done() const {
-        return !_promise && _promise->done();
+        return !_promise || _promise->done();
     }
 
     ///returns true, if the generator is active

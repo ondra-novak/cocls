@@ -14,11 +14,8 @@
 #include <cassert>
 namespace cocls {
 
-///
 template<typename T> class future;
-///
 template<typename T> class promise;
-///
 template<typename T> class async_promise;
 
 
@@ -52,7 +49,12 @@ public:
      */
     future<T> start() {
         return [&](auto promise){
-            start_promise(promise).resume();
+            auto h = start_promise(promise);
+            if (!coro_queue::is_active()) {
+                coro_queue::install_queue_and_resume(h);
+            } else {
+                h.resume();
+            }
         };
     }
 
@@ -127,6 +129,8 @@ public:
             return std::move(future<T>(*this).join());
         }
     }
+
+    future<T> operator()() {return start();}
 
 
 protected:

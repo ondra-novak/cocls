@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cocls/generator.h>
+#include <cocls/async.h>
 
 struct RetVal {
     double sum = 0;
@@ -7,7 +8,7 @@ struct RetVal {
 };
 
 
-cocls::generator<RetVal,double> summary() {
+cocls::generator<RetVal &,double> summary() {
     //this is required - as we don't have first value.
     //by yielding nullptr as a constant, the current argument is fetched and returned
     //if you need to yield nullptr as value, you need to yield a variable containing nullptr
@@ -25,7 +26,7 @@ cocls::future<double> coro_example() {
     auto sum = summary();
     double data[] = {1,4,32,31.3,58.3,0.2, 16.3, 0.8, 7.7,4,8.5};
     for (double x: data) {
-        RetVal state = co_await sum(x);
+        RetVal &state = co_await sum(x);
         std::cout << "Value=" << x <<", Sum=" << state.sum << ",  Count=" << state.count << ", Avg=" << state.sum/state.count << std::endl;
     }
     RetVal &st = sum.value();
@@ -37,7 +38,7 @@ double sync_example() {
     auto sum = summary();
     double data[] = {1,4,32,31.3,58.3,0.2, 16.3, 0.8, 7.7,4,8.5};
     for (double x: data) {
-        RetVal state = *sum(x);
+        RetVal &state = *sum(x);
         std::cout << "Value=" << x <<", Sum=" << state.sum << ",  Count=" << state.count << ", Avg=" << state.sum/state.count << std::endl;
     }
     RetVal &st = sum.value();

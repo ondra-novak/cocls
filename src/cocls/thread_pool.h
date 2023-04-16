@@ -7,22 +7,15 @@
 #pragma once
 #ifndef SRC_cocls_THREAD_POOL_H_
 #define SRC_cocls_THREAD_POOL_H_
-#include "common.h"
 #include "future.h"
-#include "exceptions.h"
 #include "generics.h"
-
+#include "async.h"
 #include "function.h"
 
 #include <condition_variable>
-#include <functional>
-#include <memory>
 #include <mutex>
-#include <optional>
 #include <queue>
 #include <thread>
-#include <variant>
-#include <vector>
 
 
 namespace cocls {
