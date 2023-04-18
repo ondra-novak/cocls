@@ -42,6 +42,7 @@ public:
     using resume_fn = suspend_point<void> (*)(awaiter *_this, void *_context) noexcept;
 
     awaiter() = default;
+    awaiter(resume_fn fn, void *user_ptr = nullptr): _handle_addr(user_ptr), _resume_fn(fn) {}
 
     /// Resumes object associated with this awaiter
     /**

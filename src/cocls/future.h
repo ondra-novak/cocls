@@ -1017,8 +1017,10 @@ void discard(Fn &&fn) {
  * @note Object is not movable nor copyable
  *
  */
+template<auto fn> class call_fn_future_awaiter;
+
 template<typename T, typename Obj,suspend_point<void> (Obj::*fn)(future<T> &) noexcept>
-class call_fn_future_awaiter: public awaiter {
+class call_fn_future_awaiter<fn>: public awaiter {
 public:
     ///construct the object
     /**
