@@ -30,7 +30,7 @@ public:
 
         template<typename Fn>
         CXX20_REQUIRES(ReturnsFuture<Fn, From>)
-        void operator<<(Fn &&xfn) {            
+        void operator<<(Fn &&xfn) {
             _owner._fut << std::forward<Fn>(xfn);
             if (!_owner._fut.subscribe(&_owner)) _owner.resume();
         }
@@ -53,7 +53,8 @@ protected:
 };
 
 
-template<typename From, typename To, typename Context, To (Context::*fn)(From &)> 
+template<typename From, typename To, typename Context, To (Context::*fn)(From &)>
+CXX20_REQUIRES((!std::same_as<To, suspend_point<void> >))
 class future_conv<fn>: public future_conv_promise_base<From, To> {
 public:
     future_conv(Context *ctx):future_conv_promise_base<From,To>([](awaiter *me, void *user_ctx) noexcept -> suspend_point<void> {
@@ -61,14 +62,40 @@ public:
         future_conv *_this = static_cast<future_conv *>(me);
         promise<To> p = std::move(_this->_prom);
         try {
-            return p((ctx->*fn)(*_this->_fut));
+            if constexpr(std::is_void_v<To>) {
+                (ctx->*fn)(*_this->_fut);
+                return p();
+            } else {
+                return p((ctx->*fn)(*_this->_fut));
+            }
         } catch (...) {
             return p(std::current_exception());
         }
     }, ctx) {}
 };
 
-template<typename From, typename To, typename Context, suspend_point<void> (Context::*fn)(From &, promise<To> &)> 
+template<typename To, typename Context, To (Context::*fn)()>
+class future_conv<fn>: public future_conv_promise_base<void, To> {
+public:
+    future_conv(Context *ctx):future_conv_promise_base<void,To>([](awaiter *me, void *user_ctx) noexcept -> suspend_point<void> {
+        Context *ctx = reinterpret_cast<Context *>(user_ctx);
+        future_conv *_this = static_cast<future_conv *>(me);
+        promise<To> p = std::move(_this->_prom);
+        try {
+            if constexpr(std::is_void_v<To>) {
+                (ctx->*fn)();
+                return p();
+            } else {
+                return p((ctx->*fn)());
+            }
+        } catch (...) {
+            return p(std::current_exception());
+        }
+    }, ctx) {}
+};
+
+
+template<typename From, typename To, typename Context, suspend_point<void> (Context::*fn)(From &, promise<To> &)>
 class future_conv<fn>: public future_conv_promise_base<From, To>{
 public:
     future_conv(Context *ctx):future_conv_promise_base<From, To>([](awaiter *me, void *user_ctx) noexcept -> suspend_point<void> {
@@ -82,7 +109,22 @@ public:
         }
     }, ctx) {}
 };
-template<typename From, typename To, To (*fn)(From &)> 
+template<typename To, typename Context, suspend_point<void> (Context::*fn)(promise<To> &)>
+class future_conv<fn>: public future_conv_promise_base<void, To>{
+public:
+    future_conv(Context *ctx):future_conv_promise_base<void, To>([](awaiter *me, void *user_ctx) noexcept -> suspend_point<void> {
+        Context *ctx = reinterpret_cast<Context *>(user_ctx);
+        future_conv *_this = static_cast<future_conv *>(me);
+        promise<To> p = std::move(_this->_prom);
+        try {
+            return (ctx->*fn)(p);
+        } catch (...) {
+            return p(std::current_exception());
+        }
+    }, ctx) {}
+};
+
+template<typename From, typename To, To (*fn)(From &)>
 class future_conv<fn>: public future_conv_promise_base<From, To> {
 public:
     future_conv():future_conv_promise_base<From, To>([](awaiter *me, void *) noexcept -> suspend_point<void> {
@@ -96,7 +138,7 @@ public:
     }, nullptr) {}
 };
 
-template<typename From, typename To, typename Context, To (*fn)(From &, Context *)> 
+template<typename From, typename To, typename Context, To (*fn)(From &, Context *)>
 class future_conv<fn>: public future_conv_promise_base<From, To> {
 public:
     future_conv(Context *ctx):future_conv_promise_base<From, To>([](awaiter *me, void *user_ctx) noexcept -> suspend_point<void> {
