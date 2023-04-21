@@ -169,7 +169,7 @@ public:
         if (ptr == me->_ptr) {
             me->_busy.store(false, std::memory_order_relaxed);
         } else {
-            ::operator delete(ptr, sz);
+            ::operator delete(ptr);
         }
     }
 protected:

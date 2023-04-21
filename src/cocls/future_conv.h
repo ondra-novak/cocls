@@ -131,7 +131,12 @@ public:
         future_conv *_this = static_cast<future_conv *>(me);
         promise<To> p = std::move(_this->_prom);
         try {
-            return p(fn(*_this->_fut));
+            if constexpr(std::is_void_v<To>) {
+                fn(*_this->_fut);
+                return p();
+            } else {
+                return p(fn(*_this->_fut));
+            }
         } catch (...) {
             return p(std::current_exception());
         }
