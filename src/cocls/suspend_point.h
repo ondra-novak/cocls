@@ -140,8 +140,8 @@ public:
                     }
                 });
             }
-            clear_internal();
         }
+        clear_internal();
     }
 
     ///implements co_await's shortcut. If suspend point is empty, no suspend is needed
@@ -170,7 +170,7 @@ public:
             std::coroutine_handle<> out = pop();
             void *me_addr = h.address();
             //check, whether my coroutine handle is also in the list (to avoid double insert)
-            bool me_included = false;            
+            bool me_included = false;
             for (auto x: *this) {
                 me_included |= x == me_addr;
                 coro_queue::instance->push(std::coroutine_handle<>::from_address(x));
@@ -186,7 +186,7 @@ public:
              coro_queue::install_queue_and_call([&]{
                 await_suspend(h).resume();
              });
-             return std::noop_coroutine();            
+             return std::noop_coroutine();
         }
     }
 
