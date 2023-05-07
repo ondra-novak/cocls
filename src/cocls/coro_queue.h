@@ -110,6 +110,30 @@ struct coro_queue {
 
     }
 
+    ///Temporary disables queue and switches thread back to the normal mode
+    /**
+     * This helps to solve issues when thread should look like normal
+     * thread. This could help to synchronize with coroutines in
+     * destructors or during execution an exception handler, that cannot
+     * be implemented as coroutines. Note that this is only temporary
+     * solution can cause other issues. For example, coroutines are
+     * resumed immediately
+     *
+     * @param fn function which is call in context of normal thread
+     * @param args arguments passed to the function
+     * @return return value of the function
+     */
+    template<typename Fn, typename ... Args>
+    CXX20_REQUIRES(std::invocable<Fn, Args...> )
+    static auto disable_queue(Fn &&fn, Args &&... args) {
+        auto prev = std::exchange(instance, nullptr);
+        auto x = trailer([&]{
+            instance = prev;
+        });
+        return fn(std::forward<Args>(args)...);
+
+    }
+
     ///Installs queue and resume coroutine
     /**
      * Function always install a new queue, even if there is an active queue.
