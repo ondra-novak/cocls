@@ -194,8 +194,8 @@ protected:
         if (aw->_next== nullptr) [[likely]] {
             //because current awaiter will be destroyed, we need to replace self
             //with a doorman()
-            //the function build_queue does this, even if there is no requests currentl
-            //but they can appear inbetween. As argument set us as stop
+            //the function build_queue does this, even if there is no requests currently
+            //but they can appear in-between. As argument set us as stop
             //use acquire memory order - obviously we acquire the mutex
             build_queue(aw);
             //suspend is not needed, we already own the mutex
