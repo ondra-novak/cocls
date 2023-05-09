@@ -1057,6 +1057,50 @@ protected:
     }
 };
 
+///This object directly implements future along with its awaiter
+/**
+ * The main purpose for this object is to allow use operator co_await
+ * for class which can be costructed and immediatelly converted to
+ * an awaiter.
+ *
+ * Instead
+ * @code
+ * AsyncCalcObj() -> future<T>() -> co_awaiter<future<T> >
+ * @endcode
+ *
+ * You can use sequence
+ * @code
+ * AsyncCalcObj() -> future_awaiter<T>()
+ * @endcode
+ *
+ * for example following code
+ * @code
+ * class AsyncCalcObj {
+ * public:
+ *      future<T> run_async();
+ *
+ *      future_awaiter<T> operator co_await() {
+ *          return [&](return run_async();};
+ *      }
+ * };
+ *
+ * co_await AsyncCalcObj(...)
+ * @endcode
+ * The above code allows to run_async() function by simply co_await on
+ * the object's instance.
+ *
+ * @tparam T returned value
+ */
+template<typename T>
+class future_awaiter: public cocls::future<T>, public cocls::co_awaiter<cocls::future<T> > {
+public:
+    template<typename ... Args>
+    future_awaiter(Args && ... args)
+        :cocls::future<T>(std::forward<Args>(args)...)
+        ,cocls::co_awaiter<cocls::future<T> >(static_cast<cocls::future<T> &>(*this)) {}
+};
+
+
 
 
 }
