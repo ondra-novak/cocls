@@ -277,8 +277,11 @@ public:
     }
 };
 
+template<auto>
+class call_fn_awaiter;
+
 template<typename T, suspend_point<void> (T::*fn)(awaiter *) noexcept>
-class call_fn_awaiter: public awaiter {
+class call_fn_awaiter<fn>: public awaiter {
 public:
     call_fn_awaiter(T *trg) {
         set_resume_fn(wakeup, trg);

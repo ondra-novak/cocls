@@ -84,7 +84,7 @@ public:
      * Your future is initialized and your promise can be used to resolve the future
      *
      */
-    template<typename Fn> 
+    template<typename Fn>
     CXX20_REQUIRES(std::invocable<Fn, promise<T> >)
     shared_future(Fn &&fn)
         :_ptr(std::make_shared<future_internal>(std::forward<Fn>(fn))) {
@@ -101,7 +101,7 @@ public:
      *
      * @param fn function to be called and return future<T>
      */
-    template<typename Fn> 
+    template<typename Fn>
     CXX20_REQUIRES(ReturnsFuture<Fn, T>)
     shared_future(Fn &&fn)
         :_ptr(std::make_shared<future_internal>()) {
@@ -200,6 +200,11 @@ public:
         _ptr->operator <<(std::forward<Fn>(fn));
         return *this;
     }
+
+    bool subscribe(awaiter *awt) {
+         return _ptr->subscribe(awt);
+    }
+
 
 
 protected:

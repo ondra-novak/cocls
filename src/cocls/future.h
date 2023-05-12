@@ -1030,6 +1030,10 @@ public:
         set_resume_fn(wakeup, &owner);
     }
 
+    call_fn_future_awaiter(Obj *owner) {
+        set_resume_fn(wakeup, owner);
+    }
+
 
     ///Run specified function or lambda function, capture future<> result and register the callback (atomically)
     /**
