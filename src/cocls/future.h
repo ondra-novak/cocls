@@ -160,6 +160,21 @@ public:
         return _awaiter.load(std::memory_order_acquire) == &awaiter::disabled;
     }
 
+    ///Determines whether future can be waited or co_awaited
+    /** 
+     * @retval true future can be waited or co_awaited
+     * @retval false future cannot be waited or co_awaited because there is no promise associated with
+     * the object nor the value */
+    bool waitable() const noexcept {
+        auto x = this->_awaiter.load(std::memory_order_relaxed);
+        return x && x != &awaiter::instance;
+    }
+
+    bool joinable() const noexcept {
+        return waitable();
+    }
+
+
 
     ///subscribes awaiter, which is signaled when future is ready
     /**
